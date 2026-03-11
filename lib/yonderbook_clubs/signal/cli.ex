@@ -1,0 +1,280 @@
+defmodule YonderbookClubs.Signal.CLI do
+  @moduledoc """
+  Real Signal implementation that connects to signal-cli's JSON-RPC 2.0 daemon
+  over TCP.
+
+  signal-cli must be running in daemon mode:
+
+      signal-cli daemon --tcp localhost:7583
+
+  This GenServer maintains a persistent TCP connection, handles reconnection
+  with exponential backoff, buffers partial reads, and dispatches incoming
+  Signal messages to `YonderbookClubs.Bot.Router.handle_message/1`.
+  """
+
+  use GenServer
+  require Logger
+
+  @behaviour YonderbookClubs.Signal
+
+  @max_backoff_ms 30_000
+  @initial_backoff_ms 1_000
+
+  # --- Public API (behaviour callbacks) ---
+
+  @impl YonderbookClubs.Signal
+  def send_message(recipient, body) do
+    send_message(recipient, body, [])
+  end
+
+  @impl YonderbookClubs.Signal
+  def send_message(recipient, body, attachments) do
+    params = %{
+      "account" => bot_number(),
+      "message" => body
+    }
+
+    params =
+      if String.starts_with?(recipient, "group.") do
+        Map.put(params, "groupId", recipient)
+      else
+        Map.put(params, "recipient", [recipient])
+      end
+
+    params =
+      if attachments == [] do
+        params
+      else
+        Map.put(params, "attachments", attachments)
+      end
+
+    call_rpc("send", params)
+  end
+
+  @impl YonderbookClubs.Signal
+  def send_poll(group_id, question, options) do
+    params = %{
+      "account" => bot_number(),
+      "groupId" => group_id,
+      "question" => question,
+      "options" => options
+    }
+
+    call_rpc("sendPollCreate", params)
+  end
+
+  @impl YonderbookClubs.Signal
+  def list_groups do
+    case call_rpc("listGroups", %{"account" => bot_number()}) do
+      {:ok, groups} -> {:ok, groups}
+      {:error, _} = error -> error
+    end
+  end
+
+  # --- Client ---
+
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  # --- GenServer callbacks ---
+
+  defmodule State do
+    @moduledoc false
+    defstruct [
+      :socket,
+      :host,
+      :port,
+      buffer: "",
+      backoff_ms: 1_000,
+      request_id: 1,
+      pending: %{}
+    ]
+  end
+
+  @impl GenServer
+  def init(_opts) do
+    host =
+      Application.get_env(:yonderbook_clubs, :signal_cli_host, "localhost")
+      |> to_charlist()
+
+    port = Application.get_env(:yonderbook_clubs, :signal_cli_port, 7583)
+
+    state = %State{host: host, port: port, backoff_ms: @initial_backoff_ms}
+
+    {:ok, state, {:continue, :connect}}
+  end
+
+  @impl GenServer
+  def handle_continue(:connect, state) do
+    case connect(state) do
+      {:ok, new_state} ->
+        {:noreply, new_state}
+
+      {:error, reason} ->
+        Logger.warning("Signal CLI connection failed: #{inspect(reason)}. Retrying in #{state.backoff_ms}ms.")
+        Process.send_after(self(), :reconnect, state.backoff_ms)
+        {:noreply, %{state | socket: nil}}
+    end
+  end
+
+  @impl GenServer
+  def handle_info(:reconnect, state) do
+    case connect(state) do
+      {:ok, new_state} ->
+        {:noreply, new_state}
+
+      {:error, reason} ->
+        next_backoff = min(state.backoff_ms * 2, @max_backoff_ms)
+        Logger.warning("Signal CLI reconnect failed: #{inspect(reason)}. Retrying in #{next_backoff}ms.")
+        Process.send_after(self(), :reconnect, next_backoff)
+        {:noreply, %{state | socket: nil, backoff_ms: next_backoff}}
+    end
+  end
+
+  def handle_info({:tcp, socket, data}, %{socket: socket} = state) do
+    buffer = state.buffer <> data
+    {messages, remaining} = extract_lines(buffer)
+
+    state = %{state | buffer: remaining}
+
+    state =
+      Enum.reduce(messages, state, fn line, acc ->
+        handle_json_line(line, acc)
+      end)
+
+    {:noreply, state}
+  end
+
+  def handle_info({:tcp_closed, socket}, %{socket: socket} = state) do
+    Logger.warning("Signal CLI TCP connection closed. Reconnecting in #{@initial_backoff_ms}ms.")
+
+    # Reject all pending requests
+    state = reject_all_pending(state, :connection_closed)
+
+    Process.send_after(self(), :reconnect, @initial_backoff_ms)
+    {:noreply, %{state | socket: nil, buffer: "", backoff_ms: @initial_backoff_ms}}
+  end
+
+  def handle_info({:tcp_error, socket, reason}, %{socket: socket} = state) do
+    Logger.error("Signal CLI TCP error: #{inspect(reason)}. Reconnecting.")
+
+    state = reject_all_pending(state, {:tcp_error, reason})
+
+    Process.send_after(self(), :reconnect, @initial_backoff_ms)
+    {:noreply, %{state | socket: nil, buffer: "", backoff_ms: @initial_backoff_ms}}
+  end
+
+  @impl GenServer
+  def handle_call({:rpc, _method, _params}, _from, %{socket: nil} = state) do
+    # Not connected — fail fast
+    {:reply, {:error, :not_connected}, state}
+  end
+
+  def handle_call({:rpc, method, params}, from, state) do
+    id = state.request_id
+
+    payload =
+      Jason.encode!(%{
+        "jsonrpc" => "2.0",
+        "id" => id,
+        "method" => method,
+        "params" => params
+      })
+
+    case :gen_tcp.send(state.socket, payload <> "\n") do
+      :ok ->
+        pending = Map.put(state.pending, id, from)
+        {:noreply, %{state | request_id: id + 1, pending: pending}}
+
+      {:error, reason} ->
+        {:reply, {:error, {:send_failed, reason}}, state}
+    end
+  end
+
+  # --- Internal ---
+
+  defp connect(state) do
+    tcp_opts = [:binary, active: true, packet: :raw]
+
+    case :gen_tcp.connect(state.host, state.port, tcp_opts) do
+      {:ok, socket} ->
+        Logger.info("Connected to signal-cli at #{state.host}:#{state.port}")
+        {:ok, %{state | socket: socket, buffer: "", backoff_ms: @initial_backoff_ms}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp extract_lines(buffer) do
+    case String.split(buffer, "\n", parts: 2) do
+      [complete, rest] ->
+        {more, remaining} = extract_lines(rest)
+        {[complete | more], remaining}
+
+      [incomplete] ->
+        {[], incomplete}
+    end
+  end
+
+  defp handle_json_line("", state), do: state
+
+  defp handle_json_line(line, state) do
+    case Jason.decode(line) do
+      {:ok, %{"id" => id} = response} when is_map_key(state.pending, id) ->
+        {from, pending} = Map.pop(state.pending, id)
+
+        reply =
+          case response do
+            %{"error" => error} -> {:error, error}
+            %{"result" => result} -> {:ok, result}
+            _ -> {:ok, nil}
+          end
+
+        GenServer.reply(from, reply)
+        %{state | pending: pending}
+
+      {:ok, %{"method" => _method, "params" => _params} = notification} ->
+        dispatch_notification(notification)
+        state
+
+      {:ok, _other} ->
+        Logger.debug("Unhandled JSON-RPC message: #{line}")
+        state
+
+      {:error, reason} ->
+        Logger.warning("Failed to parse JSON from signal-cli: #{inspect(reason)}")
+        state
+    end
+  end
+
+  defp dispatch_notification(notification) do
+    # Dispatch incoming Signal messages to the bot router in a separate process
+    # so we don't block the TCP receive loop.
+    Task.start(fn ->
+      try do
+        YonderbookClubs.Bot.Router.handle_message(notification)
+      rescue
+        e ->
+          Logger.error("Error handling Signal notification: #{inspect(e)}")
+      end
+    end)
+  end
+
+  defp reject_all_pending(state, reason) do
+    Enum.each(state.pending, fn {_id, from} ->
+      GenServer.reply(from, {:error, reason})
+    end)
+
+    %{state | pending: %{}}
+  end
+
+  defp call_rpc(method, params) do
+    GenServer.call(__MODULE__, {:rpc, method, params}, 15_000)
+  end
+
+  defp bot_number do
+    Application.get_env(:yonderbook_clubs, :signal_bot_number)
+  end
+end
