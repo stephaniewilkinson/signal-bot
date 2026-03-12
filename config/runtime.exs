@@ -14,7 +14,8 @@ if config_env() == :prod do
   config :yonderbook_clubs, YonderbookClubs.Repo,
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
-    ssl: [verify: :verify_none]
+    ssl: true,
+    ssl_opts: [verify: :verify_none]
 
   config :yonderbook_clubs,
     signal_cli_host: System.get_env("SIGNAL_CLI_HOST") || "localhost",
