@@ -1,5 +1,11 @@
 import Config
 
+if config_env() == :dev do
+  config :yonderbook_clubs,
+    signal_bot_number: System.get_env("SIGNAL_BOT_NUMBER") || "+14582995422",
+    anthropic_api_key: System.get_env("ANTHROPIC_API_KEY")
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

@@ -124,6 +124,8 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       assert result =~ "suggest"
       assert result =~ "remove"
       assert result =~ "ai:"
+      assert result =~ "start vote"
+      assert result =~ "close vote"
     end
   end
 

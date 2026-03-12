@@ -6,11 +6,11 @@ defmodule YonderbookClubs.Clubs.Club do
   @foreign_key_type :binary_id
 
   schema "clubs" do
-    field :signal_group_id, :string
-    field :name, :string
-    field :voting_active, :boolean, default: false
+    field(:signal_group_id, :string)
+    field(:name, :string)
+    field(:voting_active, :boolean, default: false)
 
-    has_many :suggestions, YonderbookClubs.Suggestions.Suggestion
+    has_many(:suggestions, YonderbookClubs.Suggestions.Suggestion)
 
     timestamps(type: :utc_datetime_usec)
   end

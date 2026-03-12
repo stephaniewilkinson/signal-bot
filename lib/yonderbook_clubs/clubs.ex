@@ -12,15 +12,13 @@ defmodule YonderbookClubs.Clubs do
   Returns `{:ok, club}`.
   """
   def get_or_create_club(signal_group_id, name) do
-    case Repo.get_by(Club, signal_group_id: signal_group_id) do
-      nil ->
-        %Club{}
-        |> Club.changeset(%{signal_group_id: signal_group_id, name: name})
-        |> Repo.insert()
-
-      club ->
-        {:ok, club}
-    end
+    %Club{}
+    |> Club.changeset(%{signal_group_id: signal_group_id, name: name})
+    |> Repo.insert(
+      on_conflict: {:replace, [:name, :updated_at]},
+      conflict_target: :signal_group_id,
+      returning: true
+    )
   end
 
   @doc """

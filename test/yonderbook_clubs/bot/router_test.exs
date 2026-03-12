@@ -37,7 +37,8 @@ defmodule YonderbookClubs.Bot.RouterTest do
     attrs = %{
       title: title,
       author: author,
-      open_library_work_id: Keyword.get(opts, :work_id, "OL#{System.unique_integer([:positive])}W"),
+      open_library_work_id:
+        Keyword.get(opts, :work_id, "OL#{System.unique_integer([:positive])}W"),
       signal_sender_uuid: Keyword.get(opts, :sender, "uuid-sender"),
       description: Keyword.get(opts, :description, "A great book.")
     }
@@ -133,7 +134,10 @@ defmodule YonderbookClubs.Bot.RouterTest do
       add_suggestion(club, "Piranesi", "Susanna Clarke")
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", _body -> :ok end)
-      expect(YonderbookClubs.Signal.Mock, :send_poll, fn "group.abc123", _question, _options -> :ok end)
+
+      expect(YonderbookClubs.Signal.Mock, :send_poll, fn "group.abc123", _question, _options ->
+        :ok
+      end)
 
       assert :ok = Router.handle_message(group_message("group.abc123", "START VOTE"))
     end

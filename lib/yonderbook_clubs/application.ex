@@ -5,7 +5,8 @@ defmodule YonderbookClubs.Application do
   def start(_type, _args) do
     children =
       [
-        YonderbookClubs.Repo
+        YonderbookClubs.Repo,
+        {Task.Supervisor, name: YonderbookClubs.TaskSupervisor}
       ] ++ signal_children()
 
     opts = [strategy: :one_for_one, name: YonderbookClubs.Supervisor]

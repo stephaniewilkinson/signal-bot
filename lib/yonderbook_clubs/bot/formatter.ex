@@ -64,6 +64,11 @@ defmodule YonderbookClubs.Bot.Formatter do
     Undo your last suggestion:
     remove
 
+    In the group chat:
+    start vote — start a poll
+    start vote 3 — poll with 3 votes each
+    close vote — end the poll
+
     The ai: option uses AI to identify your book.\
     """
   end

@@ -6,15 +6,15 @@ defmodule YonderbookClubs.Suggestions.Suggestion do
   @foreign_key_type :binary_id
 
   schema "suggestions" do
-    field :title, :string
-    field :author, :string
-    field :isbn, :string
-    field :open_library_work_id, :string
-    field :cover_url, :string
-    field :description, :string
-    field :signal_sender_uuid, :string
+    field(:title, :string)
+    field(:author, :string)
+    field(:isbn, :string)
+    field(:open_library_work_id, :string)
+    field(:cover_url, :string)
+    field(:description, :string)
+    field(:signal_sender_uuid, :string)
 
-    belongs_to :club, YonderbookClubs.Clubs.Club
+    belongs_to(:club, YonderbookClubs.Clubs.Club)
 
     timestamps(type: :utc_datetime_usec)
   end

@@ -78,7 +78,11 @@ COPY --from=build /app/_build/prod/rel/yonderbook_clubs ./
 COPY bin/start.sh /app/bin/start.sh
 RUN chmod +x /app/bin/start.sh
 
-# Create the data directory (will be overlaid by persistent disk on Render)
-RUN mkdir -p /data/signal-cli
+# Create non-root user and data directory
+RUN useradd -m appuser && \
+    mkdir -p /data/signal-cli && \
+    chown -R appuser: /app /data
+
+USER appuser
 
 CMD ["/app/bin/start.sh"]

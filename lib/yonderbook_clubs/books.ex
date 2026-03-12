@@ -71,8 +71,12 @@ defmodule YonderbookClubs.Books do
   """
   def search_ai(text) do
     case Application.get_env(:yonderbook_clubs, :anthropic_api_key) do
-      nil -> {:error, :ai_not_configured}
-      "" -> {:error, :ai_not_configured}
+      nil ->
+        {:error, :ai_not_configured}
+
+      "" ->
+        {:error, :ai_not_configured}
+
       api_key ->
         case do_ai_extraction(text, api_key) do
           {:ok, _} = result -> result
@@ -306,5 +310,4 @@ defmodule YonderbookClubs.Books do
 
   defp cover_url(nil), do: nil
   defp cover_url(cover_id), do: "#{@covers_base}/#{cover_id}-M.jpg"
-
 end

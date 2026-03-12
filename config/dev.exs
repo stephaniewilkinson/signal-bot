@@ -10,5 +10,5 @@ config :yonderbook_clubs, YonderbookClubs.Repo,
   pool_size: 10
 
 config :yonderbook_clubs,
-  signal_bot_number: System.get_env("SIGNAL_BOT_NUMBER", "+14582995422"),
-  anthropic_api_key: System.get_env("ANTHROPIC_API_KEY")
+  signal_bot_number: "+14582995422",
+  anthropic_api_key: nil

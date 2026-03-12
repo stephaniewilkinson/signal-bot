@@ -59,7 +59,7 @@ defmodule YonderbookClubs.Suggestions do
 
     case Repo.one(query) do
       nil -> {:error, :not_found}
-      suggestion -> {:ok, Repo.delete!(suggestion)}
+      suggestion -> Repo.delete(suggestion)
     end
   end
 

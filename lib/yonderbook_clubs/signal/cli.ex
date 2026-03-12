@@ -118,7 +118,10 @@ defmodule YonderbookClubs.Signal.CLI do
         {:noreply, new_state}
 
       {:error, reason} ->
-        Logger.warning("Signal CLI connection failed: #{inspect(reason)}. Retrying in #{state.backoff_ms}ms.")
+        Logger.warning(
+          "Signal CLI connection failed: #{inspect(reason)}. Retrying in #{state.backoff_ms}ms."
+        )
+
         Process.send_after(self(), :reconnect, state.backoff_ms)
         {:noreply, %{state | socket: nil}}
     end
@@ -132,12 +135,17 @@ defmodule YonderbookClubs.Signal.CLI do
 
       {:error, reason} ->
         next_backoff = min(state.backoff_ms * 2, @max_backoff_ms)
-        Logger.warning("Signal CLI reconnect failed: #{inspect(reason)}. Retrying in #{next_backoff}ms.")
+
+        Logger.warning(
+          "Signal CLI reconnect failed: #{inspect(reason)}. Retrying in #{next_backoff}ms."
+        )
+
         Process.send_after(self(), :reconnect, next_backoff)
         {:noreply, %{state | socket: nil, backoff_ms: next_backoff}}
     end
   end
 
+  @impl GenServer
   def handle_info({:tcp, socket, data}, %{socket: socket} = state) do
     buffer = state.buffer <> data
     {messages, remaining} = extract_lines(buffer)
@@ -152,6 +160,7 @@ defmodule YonderbookClubs.Signal.CLI do
     {:noreply, state}
   end
 
+  @impl GenServer
   def handle_info({:tcp_closed, socket}, %{socket: socket} = state) do
     Logger.warning("Signal CLI TCP connection closed. Reconnecting in #{@initial_backoff_ms}ms.")
 
@@ -162,6 +171,7 @@ defmodule YonderbookClubs.Signal.CLI do
     {:noreply, %{state | socket: nil, buffer: "", backoff_ms: @initial_backoff_ms}}
   end
 
+  @impl GenServer
   def handle_info({:tcp_error, socket, reason}, %{socket: socket} = state) do
     Logger.error("Signal CLI TCP error: #{inspect(reason)}. Reconnecting.")
 
@@ -269,13 +279,8 @@ defmodule YonderbookClubs.Signal.CLI do
           }
           |> maybe_add_group_info(envelope)
 
-        Task.start(fn ->
-          try do
-            YonderbookClubs.Bot.Router.handle_message(msg)
-          rescue
-            e ->
-              Logger.error("Error handling Signal notification: #{inspect(e)}")
-          end
+        Task.Supervisor.start_child(YonderbookClubs.TaskSupervisor, fn ->
+          YonderbookClubs.Bot.Router.handle_message(msg)
         end)
 
       _ ->

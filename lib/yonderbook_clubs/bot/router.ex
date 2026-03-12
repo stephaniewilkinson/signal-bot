@@ -108,7 +108,11 @@ defmodule YonderbookClubs.Bot.Router do
   defp get_suggestions_for_vote(club, group_id) do
     case Suggestions.list_suggestions(club) do
       [] ->
-        YonderbookClubs.Signal.impl().send_message(group_id, "No suggestions yet — DM me to add one.")
+        YonderbookClubs.Signal.impl().send_message(
+          group_id,
+          "No suggestions yet — DM me to add one."
+        )
+
         {:error, :no_suggestions}
 
       suggestions ->
@@ -170,7 +174,19 @@ defmodule YonderbookClubs.Bot.Router do
         end
 
       {:error, :no_clubs} ->
-        signal.send_message(sender_uuid, "Please add me to a book club so I know the club you are a member of.")
+        signal.send_message(
+          sender_uuid,
+          "Please add me to a book club so I know the club you are a member of."
+        )
+
+        :ok
+
+      {:error, :signal_unavailable} ->
+        signal.send_message(
+          sender_uuid,
+          "Something went wrong connecting to Signal. Try again later."
+        )
+
         :ok
 
       {:error, :multiple_clubs, clubs} ->
@@ -194,6 +210,14 @@ defmodule YonderbookClubs.Bot.Router do
         YonderbookClubs.Signal.impl().send_message(
           sender_uuid,
           "Please add me to a book club so I know the club you are a member of."
+        )
+
+        :ok
+
+      {:error, :signal_unavailable} ->
+        YonderbookClubs.Signal.impl().send_message(
+          sender_uuid,
+          "Something went wrong connecting to Signal. Try again later."
         )
 
         :ok
@@ -237,7 +261,7 @@ defmodule YonderbookClubs.Bot.Router do
         handle_ai_suggestion(sender_uuid, club, ai_text)
 
       isbn?(text) ->
-        isbn = normalize_isbn(text)
+        isbn = YonderbookClubs.Books.normalize_isbn(text)
         handle_isbn_suggestion(sender_uuid, club, isbn)
 
       Regex.match?(@title_by_author_regex, text) ->
@@ -255,10 +279,6 @@ defmodule YonderbookClubs.Bot.Router do
     Regex.match?(@isbn_regex, text) and String.length(stripped) in [10, 13]
   end
 
-  defp normalize_isbn(text) do
-    String.replace(text, "-", "")
-  end
-
   defp handle_ai_suggestion(sender_uuid, club, text) do
     signal = YonderbookClubs.Signal.impl()
 
@@ -267,7 +287,11 @@ defmodule YonderbookClubs.Bot.Router do
         save_suggestion(sender_uuid, club, book_data)
 
       {:error, _reason} ->
-        signal.send_message(sender_uuid, "❌ Couldn't find that book. Try: suggest Title by Author")
+        signal.send_message(
+          sender_uuid,
+          "❌ Couldn't find that book. Try: suggest Title by Author"
+        )
+
         :ok
     end
   end
@@ -293,7 +317,11 @@ defmodule YonderbookClubs.Bot.Router do
         save_suggestion(sender_uuid, club, book_data)
 
       {:error, _reason} ->
-        signal.send_message(sender_uuid, "❌ Couldn't find that book. Check the spelling and try again.")
+        signal.send_message(
+          sender_uuid,
+          "❌ Couldn't find that book. Check the spelling and try again."
+        )
+
         :ok
     end
   end
@@ -347,8 +375,9 @@ defmodule YonderbookClubs.Bot.Router do
       {:ok, []} ->
         {:error, :no_clubs}
 
-      {:error, _reason} ->
-        {:error, :no_clubs}
+      {:error, reason} ->
+        Logger.error("Failed to list Signal groups: #{inspect(reason)}")
+        {:error, :signal_unavailable}
     end
   end
 
