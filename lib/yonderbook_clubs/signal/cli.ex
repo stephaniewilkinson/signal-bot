@@ -35,10 +35,10 @@ defmodule YonderbookClubs.Signal.CLI do
     }
 
     params =
-      if String.starts_with?(recipient, "group.") do
-        Map.put(params, "groupId", recipient)
-      else
+      if dm_recipient?(recipient) do
         Map.put(params, "recipient", [recipient])
+      else
+        Map.put(params, "groupId", recipient)
       end
 
     params =
@@ -48,7 +48,10 @@ defmodule YonderbookClubs.Signal.CLI do
         Map.put(params, "attachments", attachments)
       end
 
-    call_rpc("send", params)
+    case call_rpc("send", params) do
+      {:ok, _} -> :ok
+      {:error, _} = error -> error
+    end
   end
 
   @impl YonderbookClubs.Signal
@@ -60,7 +63,10 @@ defmodule YonderbookClubs.Signal.CLI do
       "options" => options
     }
 
-    call_rpc("sendPollCreate", params)
+    case call_rpc("sendPollCreate", params) do
+      {:ok, _} -> :ok
+      {:error, _} = error -> error
+    end
   end
 
   @impl YonderbookClubs.Signal
@@ -249,18 +255,42 @@ defmodule YonderbookClubs.Signal.CLI do
     end
   end
 
-  defp dispatch_notification(notification) do
-    # Dispatch incoming Signal messages to the bot router in a separate process
-    # so we don't block the TCP receive loop.
-    Task.start(fn ->
-      try do
-        YonderbookClubs.Bot.Router.handle_message(notification)
-      rescue
-        e ->
-          Logger.error("Error handling Signal notification: #{inspect(e)}")
-      end
-    end)
+  defp dispatch_notification(%{"params" => %{"envelope" => envelope}} = _notification) do
+    # Extract the envelope from the JSON-RPC notification and build a flat map
+    # for the router. Only dispatch if there's a dataMessage (skip typing indicators, etc.)
+    case envelope do
+      %{"dataMessage" => %{"message" => message}} when is_binary(message) ->
+        msg =
+          %{
+            "message" => message,
+            "sourceUuid" => envelope["sourceUuid"],
+            "sourceName" => envelope["sourceName"],
+            "sourceNumber" => envelope["sourceNumber"]
+          }
+          |> maybe_add_group_info(envelope)
+
+        Task.start(fn ->
+          try do
+            YonderbookClubs.Bot.Router.handle_message(msg)
+          rescue
+            e ->
+              Logger.error("Error handling Signal notification: #{inspect(e)}")
+          end
+        end)
+
+      _ ->
+        # Typing indicators, read receipts, etc. — ignore
+        :ok
+    end
   end
+
+  defp dispatch_notification(_notification), do: :ok
+
+  defp maybe_add_group_info(msg, %{"dataMessage" => %{"groupInfo" => group_info}}) do
+    Map.put(msg, "groupInfo", group_info)
+  end
+
+  defp maybe_add_group_info(msg, _envelope), do: msg
 
   defp reject_all_pending(state, reason) do
     Enum.each(state.pending, fn {_id, from} ->
@@ -276,5 +306,11 @@ defmodule YonderbookClubs.Signal.CLI do
 
   defp bot_number do
     Application.get_env(:yonderbook_clubs, :signal_bot_number)
+  end
+
+  # UUIDs and phone numbers are DM recipients; everything else is a group ID (base64)
+  defp dm_recipient?(recipient) do
+    String.starts_with?(recipient, "+") or
+      Regex.match?(~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, recipient)
   end
 end

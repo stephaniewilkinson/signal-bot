@@ -4,6 +4,8 @@ defmodule YonderbookClubs.Books do
   via Anthropic Claude API (opt-in).
   """
 
+  require Logger
+
   @open_library_base "https://openlibrary.org"
   @covers_base "https://covers.openlibrary.org/b/id"
   @anthropic_base "https://api.anthropic.com/v1/messages"
@@ -17,17 +19,24 @@ defmodule YonderbookClubs.Books do
   def search(title, author) do
     url = "#{@open_library_base}/search.json"
 
+    # Try exact title+author first, fall back to general query
     case Req.get(url, params: [title: title, author: author, limit: 1]) do
       {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
         build_from_search_result(first)
 
-      {:ok, %{status: 200, body: %{"docs" => []}}} ->
-        {:error, :not_found}
+      _ ->
+        search_general("#{title} #{author}")
+    end
+  end
 
-      {:ok, %{status: 200, body: %{"numFound" => 0}}} ->
-        {:error, :not_found}
+  defp search_general(query) do
+    url = "#{@open_library_base}/search.json"
 
-      _error ->
+    case Req.get(url, params: [q: query, limit: 1]) do
+      {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
+        build_from_search_result(first)
+
+      _ ->
         {:error, :not_found}
     end
   end
@@ -64,7 +73,11 @@ defmodule YonderbookClubs.Books do
     case Application.get_env(:yonderbook_clubs, :anthropic_api_key) do
       nil -> {:error, :ai_not_configured}
       "" -> {:error, :ai_not_configured}
-      api_key -> do_ai_extraction(text, api_key)
+      api_key ->
+        case do_ai_extraction(text, api_key) do
+          {:ok, _} = result -> result
+          {:error, _} -> search_general(text)
+        end
     end
   end
 
@@ -191,9 +204,12 @@ defmodule YonderbookClubs.Books do
 
   defp do_ai_extraction(text, api_key) do
     system_prompt =
-      "You are a book identification assistant. Given a user's description, extract the book title " <>
-        "and author. Return ONLY valid JSON with keys \"title\" and \"author\". " <>
-        "If you cannot identify a specific book, return {\"error\": \"unrecognized\"}."
+      "You are a book identification assistant. Given a user's description, extract the exact book title " <>
+        "and author. The input may contain misspellings, partial names, or approximate titles — " <>
+        "do your best to identify the intended book. Return the EXACT, COMPLETE title as published " <>
+        "(e.g. \"Babylonia\" not \"Babylon\"). Return ONLY valid JSON (no markdown, no code fences) " <>
+        "with keys \"title\" and \"author\" using correct spelling. " <>
+        "If you truly cannot identify any plausible book, return {\"error\": \"unrecognized\"}."
 
     body =
       Jason.encode!(%{
@@ -213,15 +229,24 @@ defmodule YonderbookClubs.Books do
 
     case Req.post(@anthropic_base, body: body, headers: headers) do
       {:ok, %{status: 200, body: %{"content" => [%{"text" => response_text} | _]}}} ->
+        Logger.info("AI extraction result: #{response_text}")
         parse_ai_response(response_text)
 
-      _error ->
+      other ->
+        Logger.error("AI extraction failed: #{inspect(other)}")
         {:error, :unrecognized}
     end
   end
 
   defp parse_ai_response(text) do
-    case Jason.decode(text) do
+    # Strip markdown code fences if present
+    clean =
+      text
+      |> String.replace(~r/```json\s*/, "")
+      |> String.replace(~r/```\s*/, "")
+      |> String.trim()
+
+    case Jason.decode(clean) do
       {:ok, %{"error" => _}} ->
         {:error, :unrecognized}
 

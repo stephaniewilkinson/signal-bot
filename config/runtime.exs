@@ -8,9 +8,13 @@ if config_env() == :prod do
       For example: ecto://USER:PASS@HOST/DATABASE
       """
 
+  # Render provides postgres:// but Ecto requires ecto://
+  database_url = String.replace(database_url, ~r/^postgres(ql)?:\/\//, "ecto://")
+
   config :yonderbook_clubs, YonderbookClubs.Repo,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    ssl: true
 
   config :yonderbook_clubs,
     signal_cli_host: System.get_env("SIGNAL_CLI_HOST") || "localhost",
@@ -18,7 +22,5 @@ if config_env() == :prod do
     signal_bot_number:
       System.get_env("SIGNAL_BOT_NUMBER") ||
         raise("environment variable SIGNAL_BOT_NUMBER is missing."),
-    anthropic_api_key:
-      System.get_env("ANTHROPIC_API_KEY") ||
-        raise("environment variable ANTHROPIC_API_KEY is missing.")
+    anthropic_api_key: System.get_env("ANTHROPIC_API_KEY")
 end

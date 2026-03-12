@@ -7,32 +7,21 @@ defmodule YonderbookClubs.Bot.Formatter do
 
   @max_description_length 200
 
-  @doc """
-  Formats the blurbs message listing all book candidates for a vote.
-
-  Returns a string like:
-
-      📚 This month's candidates — choose up to 2:
-
-      Piranesi — Susanna Clarke
-      A man lives alone in a labyrinthine house of infinite halls and...
-
-      Babel — RF Kuang
-      Dark academia fantasy about translation and colonial empire...
-  """
   def format_blurbs(suggestions, vote_budget) do
-    header = "📚 This month's candidates — choose up to #{vote_budget}:"
+    n = length(suggestions)
+    header = "📚 #{n} books nominated — pick up to #{vote_budget}:\n"
 
     blurbs =
       suggestions
-      |> Enum.map(&format_single_blurb/1)
+      |> Enum.with_index(1)
+      |> Enum.map(fn {s, i} -> format_single_blurb(s, i) end)
       |> Enum.join("\n\n")
 
-    header <> "\n\n" <> blurbs
+    header <> "\n" <> blurbs
   end
 
-  defp format_single_blurb(suggestion) do
-    title_line = "#{suggestion.title} — #{suggestion.author}"
+  defp format_single_blurb(suggestion, index) do
+    title_line = "#{index}. #{suggestion.title} — #{suggestion.author}"
 
     case suggestion.description do
       nil -> title_line
@@ -48,68 +37,41 @@ defmodule YonderbookClubs.Bot.Formatter do
       text
       |> String.slice(0, max_length)
       |> String.trim_trailing()
-      |> Kernel.<>("...")
+      |> Kernel.<>("…")
     end
   end
 
-  @doc """
-  Formats the poll question string.
-
-  Returns "Choose up to N — we're picking N months of reading".
-  """
   def format_poll_question(vote_budget) do
-    "Choose up to #{vote_budget} — we're picking #{vote_budget} months of reading"
+    case vote_budget do
+      1 -> "Vote for your next read"
+      n -> "Pick up to #{n} — we're choosing #{n} months of reading"
+    end
   end
 
-  @doc """
-  Formats suggestion titles into a list of poll option strings.
-
-  Returns a list like `["Piranesi", "Babel", "The Dispossessed"]`.
-  """
   def format_poll_options(suggestions) do
     Enum.map(suggestions, & &1.title)
   end
 
-  @doc """
-  Formats the help/onboarding message sent via DM.
-  """
   def format_help do
     """
-    👋 Welcome to your book club!
+    📚 Yonderbook Clubs
 
-    To suggest a book, DM me:
+    Suggest a book:
+    suggest Piranesi by Susanna Clarke
+    suggest 978-1635575996
+    suggest ai: that book about the infinite house
 
-    📖 suggest Piranesi by Susanna Clarke
-    🔗 suggest https://goodreads.com/book/show/...
-    🔢 suggest 978-1635575996
+    Undo your last suggestion:
+    remove
 
-    🤖 Want to describe it loosely?
-       suggest ai: that infinite house book everyone was talking about
-       Note: this option uses AI to interpret your message.
-
-    To undo: remove
-    Type 'help' anytime to see this again.\
+    The ai: option uses AI to identify your book.\
     """
   end
 
-  @doc """
-  Formats a confirmation message after a suggestion is added.
-
-  Returns "Added Title by Author! Say 'remove' to undo."
-  """
   def format_confirmation(title, author) do
-    "Added #{title} by #{author}! Say 'remove' to undo."
+    "✅ #{title} by #{author}\nSay 'remove' to undo."
   end
 
-  @doc """
-  Formats a numbered list of clubs for disambiguation.
-
-  Returns a string like:
-
-      Which club?
-      1) Book Lovers
-      2) Sci-Fi Circle
-  """
   def format_club_list(clubs) do
     lines =
       clubs
@@ -117,6 +79,6 @@ defmodule YonderbookClubs.Bot.Formatter do
       |> Enum.map(fn {club, index} -> "#{index}) #{club.name}" end)
       |> Enum.join("\n")
 
-    "Which club?\n" <> lines
+    "Which club? Re-send with #N:\n" <> lines
   end
 end

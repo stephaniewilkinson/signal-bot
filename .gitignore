@@ -24,3 +24,7 @@ yonderbook_clubs-*.tar
 
 CLAUDE.md
 .claude
+
+# Environment
+.env
+.envrc

@@ -1,0 +1,16 @@
+_build/
+deps/
+cover/
+doc/
+tmp/
+.git
+.elixir_ls/
+.vscode/
+config/dev.exs
+config/test.exs
+CLAUDE.md
+.claude/
+.DS_Store
+test/
+.env
+.envrc

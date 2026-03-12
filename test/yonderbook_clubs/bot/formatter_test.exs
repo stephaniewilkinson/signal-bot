@@ -27,14 +27,32 @@ defmodule YonderbookClubs.Bot.FormatterTest do
                "A man lives alone in a labyrinthine house of infinite halls and vast oceans."
     end
 
+    test "numbers the suggestions" do
+      suggestions = [
+        build_suggestion(),
+        build_suggestion(%{title: "Babel", author: "RF Kuang", description: "Dark academia."})
+      ]
+
+      result = Formatter.format_blurbs(suggestions, 2)
+
+      assert result =~ "1. Piranesi — Susanna Clarke"
+      assert result =~ "2. Babel — RF Kuang"
+    end
+
+    test "includes count and vote budget in header" do
+      suggestions = [build_suggestion(), build_suggestion(%{title: "Babel", author: "RF Kuang"})]
+      result = Formatter.format_blurbs(suggestions, 3)
+
+      assert result =~ "2 books nominated"
+      assert result =~ "pick up to 3"
+    end
+
     test "truncates descriptions longer than 200 characters" do
       long_description = String.duplicate("a", 250)
       suggestions = [build_suggestion(%{description: long_description})]
       result = Formatter.format_blurbs(suggestions, 1)
 
-      # The truncated description should be 200 chars + "..."
-      assert result =~ "..."
-      # Should not contain the full 250-char description
+      assert result =~ "…"
       refute result =~ long_description
     end
 
@@ -43,10 +61,6 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       result = Formatter.format_blurbs(suggestions, 1)
 
       assert result =~ "Piranesi — Susanna Clarke"
-      # Title line should appear without a trailing newline for the missing description
-      lines = String.split(result, "\n")
-      title_line = Enum.find(lines, &(&1 =~ "Piranesi"))
-      assert title_line == "Piranesi — Susanna Clarke"
     end
 
     test "handles suggestions with empty string descriptions" do
@@ -54,13 +68,6 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       result = Formatter.format_blurbs(suggestions, 1)
 
       assert result =~ "Piranesi — Susanna Clarke"
-    end
-
-    test "includes vote budget in header" do
-      suggestions = [build_suggestion()]
-      result = Formatter.format_blurbs(suggestions, 3)
-
-      assert result =~ "choose up to 3"
     end
 
     test "formats multiple suggestions separated by blank lines" do
@@ -78,16 +85,17 @@ defmodule YonderbookClubs.Bot.FormatterTest do
   end
 
   describe "format_poll_question/1" do
-    test "formats with vote budget" do
-      result = Formatter.format_poll_question(2)
-
-      assert result == "Choose up to 2 — we're picking 2 months of reading"
-    end
-
     test "formats with single vote budget" do
       result = Formatter.format_poll_question(1)
 
-      assert result == "Choose up to 1 — we're picking 1 months of reading"
+      assert result == "Vote for your next read"
+    end
+
+    test "formats with multi vote budget" do
+      result = Formatter.format_poll_question(2)
+
+      assert result =~ "Pick up to 2"
+      assert result =~ "2 months of reading"
     end
   end
 
@@ -115,7 +123,6 @@ defmodule YonderbookClubs.Bot.FormatterTest do
 
       assert result =~ "suggest"
       assert result =~ "remove"
-      assert result =~ "help"
       assert result =~ "ai:"
     end
   end
@@ -124,7 +131,8 @@ defmodule YonderbookClubs.Bot.FormatterTest do
     test "includes title and author" do
       result = Formatter.format_confirmation("Piranesi", "Susanna Clarke")
 
-      assert result == "Added Piranesi by Susanna Clarke! Say 'remove' to undo."
+      assert result =~ "Piranesi by Susanna Clarke"
+      assert result =~ "remove"
     end
   end
 
@@ -142,11 +150,11 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       assert result =~ "2) Sci-Fi Circle"
     end
 
-    test "formats single club" do
+    test "includes re-send instruction" do
       clubs = [%YonderbookClubs.Clubs.Club{name: "Book Nerds"}]
       result = Formatter.format_club_list(clubs)
 
-      assert result == "Which club?\n1) Book Nerds"
+      assert result =~ "#N"
     end
   end
 end

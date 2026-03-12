@@ -1,0 +1,26 @@
+databases:
+  - name: yonderbook-clubs-db
+    plan: starter
+    databaseName: yonderbook_clubs
+    user: yonderbook_clubs
+
+services:
+  - type: worker
+    name: yonderbook-clubs
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: oregon
+    disk:
+      name: signal-cli-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: yonderbook-clubs-db
+          property: connectionString
+      - key: SIGNAL_BOT_NUMBER
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
