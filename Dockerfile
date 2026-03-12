@@ -1,7 +1,7 @@
 # --- Stage 1: Build the Elixir release ---
-ARG ELIXIR_VERSION=1.18.4
+ARG ELIXIR_VERSION=1.19.5
 ARG OTP_VERSION=28.4.1
-ARG DEBIAN_VERSION=bookworm-20260223
+ARG DEBIAN_VERSION=trixie-20260223
 
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
@@ -51,7 +51,7 @@ RUN apt-get update -y && \
       ca-certificates \
       curl \
       netcat-openbsd \
-      openjdk-17-jre-headless && \
+      openjdk-21-jre-headless && \
     sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
     locale-gen && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
