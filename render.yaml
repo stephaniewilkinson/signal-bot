@@ -1,6 +1,6 @@
 databases:
   - name: yonderbook-clubs-db
-    plan: starter
+    plan: free
     databaseName: yonderbook_clubs
     user: yonderbook_clubs
 
