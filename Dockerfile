@@ -66,6 +66,9 @@ RUN curl -L -o /tmp/signal-cli.tar.gz \
 # Copy the Elixir release from the build stage
 COPY --from=build /app/_build/prod/rel/yonderbook_clubs ./
 
+# Copy signal-cli seed data (for first-boot seeding to persistent disk)
+COPY signal-cli-data /app/signal-cli-data
+
 # Copy the start script
 COPY bin/start.sh /app/bin/start.sh
 RUN chmod +x /app/bin/start.sh
