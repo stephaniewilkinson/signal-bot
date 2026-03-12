@@ -46,7 +46,7 @@ RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
       libstdc++6 \
       openssl \
-      libncurses5 \
+      libncurses6 \
       locales \
       ca-certificates \
       curl \
