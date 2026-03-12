@@ -3,11 +3,6 @@ set -e
 
 # Seed signal-cli data to persistent disk on first boot
 mkdir -p /data/signal-cli/data
-# Always re-seed until data is in the correct location
-if [ -f /app/signal-cli-data/accounts.json ]; then
-  echo "==> Seeding signal-cli data to persistent disk..."
-  cp -r /app/signal-cli-data/* /data/signal-cli/data/
-fi
 
 echo "==> Running Ecto migrations..."
 /app/bin/yonderbook_clubs eval "YonderbookClubs.Release.migrate()"
