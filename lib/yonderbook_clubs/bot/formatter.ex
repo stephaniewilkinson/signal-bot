@@ -9,7 +9,7 @@ defmodule YonderbookClubs.Bot.Formatter do
 
   def format_blurbs(suggestions, vote_budget) do
     n = length(suggestions)
-    header = "📚 #{n} books nominated — pick up to #{vote_budget}:\n"
+    header = "#{n} books — pick up to #{vote_budget}:\n"
 
     blurbs =
       suggestions
@@ -43,8 +43,8 @@ defmodule YonderbookClubs.Bot.Formatter do
 
   def format_poll_question(vote_budget) do
     case vote_budget do
-      1 -> "Vote for your next read"
-      n -> "Pick up to #{n} — we're choosing #{n} months of reading"
+      1 -> "What should we read next?"
+      n -> "Pick up to #{n} — choosing #{n} months of reading"
     end
   end
 
@@ -54,27 +54,19 @@ defmodule YonderbookClubs.Bot.Formatter do
 
   def format_help do
     """
-    📚 Yonderbook Clubs
+    DM me to suggest a book:
+    "suggest Piranesi by Susanna Clarke"
+    "suggest 978-1635575996"
 
-    Suggest a book:
-    suggest Piranesi by Susanna Clarke
-    suggest 978-1635575996
-    suggest ai: that book about the infinite house
+    Undo: "remove"
 
-    Undo your last suggestion:
-    remove
-
-    In the group chat:
-    start vote — start a poll
-    start vote 3 — poll with 3 votes each
-    close vote — end the poll
-
-    The ai: option uses AI to identify your book.\
+    Not sure of the title?
+    "suggest ai: that infinite house book"\
     """
   end
 
   def format_confirmation(title, author) do
-    "✅ #{title} by #{author}\nSay 'remove' to undo."
+    "Added #{title} by #{author}.\nSay \"remove\" to undo."
   end
 
   def format_club_list(clubs) do
@@ -84,6 +76,6 @@ defmodule YonderbookClubs.Bot.Formatter do
       |> Enum.map(fn {club, index} -> "#{index}) #{club.name}" end)
       |> Enum.join("\n")
 
-    "Which club? Re-send with #N:\n" <> lines
+    "Which club? Re-send with the number:\n" <> lines
   end
 end

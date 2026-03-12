@@ -43,7 +43,7 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       suggestions = [build_suggestion(), build_suggestion(%{title: "Babel", author: "RF Kuang"})]
       result = Formatter.format_blurbs(suggestions, 3)
 
-      assert result =~ "2 books nominated"
+      assert result =~ "2 books"
       assert result =~ "pick up to 3"
     end
 
@@ -88,7 +88,7 @@ defmodule YonderbookClubs.Bot.FormatterTest do
     test "formats with single vote budget" do
       result = Formatter.format_poll_question(1)
 
-      assert result == "Vote for your next read"
+      assert result == "What should we read next?"
     end
 
     test "formats with multi vote budget" do
@@ -124,8 +124,6 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       assert result =~ "suggest"
       assert result =~ "remove"
       assert result =~ "ai:"
-      assert result =~ "start vote"
-      assert result =~ "close vote"
     end
   end
 
@@ -156,7 +154,7 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       clubs = [%YonderbookClubs.Clubs.Club{name: "Book Nerds"}]
       result = Formatter.format_club_list(clubs)
 
-      assert result =~ "#N"
+      assert result =~ "number"
     end
   end
 end

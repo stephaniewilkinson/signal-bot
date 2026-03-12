@@ -98,7 +98,10 @@ defmodule YonderbookClubs.Bot.Router do
 
   defp check_not_already_voting(club, group_id) do
     if club.voting_active do
-      YonderbookClubs.Signal.impl().send_message(group_id, "⏳ A vote is already in progress.")
+      YonderbookClubs.Signal.impl().send_message(
+        group_id,
+        "A vote is already open. Say \"close vote\" to end it."
+      )
       {:error, :already_voting}
     else
       :ok
@@ -110,7 +113,7 @@ defmodule YonderbookClubs.Bot.Router do
       [] ->
         YonderbookClubs.Signal.impl().send_message(
           group_id,
-          "No suggestions yet — DM me to add one."
+          "No suggestions yet. DM me: \"suggest Title by Author\""
         )
 
         {:error, :no_suggestions}
@@ -127,7 +130,7 @@ defmodule YonderbookClubs.Bot.Router do
 
       club ->
         Clubs.set_voting_active(club, false)
-        YonderbookClubs.Signal.impl().send_message(group_id, "✅ Vote closed.")
+        YonderbookClubs.Signal.impl().send_message(group_id, "Vote closed.")
         :ok
     end
   end
@@ -163,20 +166,20 @@ defmodule YonderbookClubs.Bot.Router do
           {:ok, suggestion} ->
             signal.send_message(
               sender_uuid,
-              "🗑 Removed #{suggestion.title} by #{suggestion.author}."
+              "Removed #{suggestion.title} by #{suggestion.author}."
             )
 
             :ok
 
           {:error, :not_found} ->
-            signal.send_message(sender_uuid, "Nothing to remove.")
+            signal.send_message(sender_uuid, "You don't have any suggestions to remove.")
             :ok
         end
 
       {:error, :no_clubs} ->
         signal.send_message(
           sender_uuid,
-          "Please add me to a book club so I know the club you are a member of."
+          "I'm not in any of your group chats yet. Add me to a group first."
         )
 
         :ok
@@ -184,7 +187,7 @@ defmodule YonderbookClubs.Bot.Router do
       {:error, :signal_unavailable} ->
         signal.send_message(
           sender_uuid,
-          "Something went wrong connecting to Signal. Try again later."
+          "Something went wrong. Try again in a minute."
         )
 
         :ok
@@ -209,7 +212,7 @@ defmodule YonderbookClubs.Bot.Router do
       {:error, :no_clubs} ->
         YonderbookClubs.Signal.impl().send_message(
           sender_uuid,
-          "Please add me to a book club so I know the club you are a member of."
+          "I'm not in any of your group chats yet. Add me to a group first."
         )
 
         :ok
@@ -217,7 +220,7 @@ defmodule YonderbookClubs.Bot.Router do
       {:error, :signal_unavailable} ->
         YonderbookClubs.Signal.impl().send_message(
           sender_uuid,
-          "Something went wrong connecting to Signal. Try again later."
+          "Something went wrong. Try again in a minute."
         )
 
         :ok
@@ -233,7 +236,7 @@ defmodule YonderbookClubs.Bot.Router do
       {:error, :invalid_club_number} ->
         YonderbookClubs.Signal.impl().send_message(
           sender_uuid,
-          "Invalid club number. Use 'suggest' to see your clubs."
+          "That club number doesn't exist. Say \"suggest\" to see the list."
         )
 
         :ok
@@ -289,7 +292,7 @@ defmodule YonderbookClubs.Bot.Router do
       {:error, _reason} ->
         signal.send_message(
           sender_uuid,
-          "❌ Couldn't find that book. Try: suggest Title by Author"
+          "Couldn't find that book. Try the exact title:\n\"suggest Piranesi by Susanna Clarke\""
         )
 
         :ok
@@ -304,7 +307,10 @@ defmodule YonderbookClubs.Bot.Router do
         save_suggestion(sender_uuid, club, book_data)
 
       {:error, _reason} ->
-        signal.send_message(sender_uuid, "❌ Couldn't find that ISBN. Double-check and try again.")
+        signal.send_message(
+          sender_uuid,
+          "Couldn't find that ISBN. Check the number and try again."
+        )
         :ok
     end
   end
@@ -319,7 +325,7 @@ defmodule YonderbookClubs.Bot.Router do
       {:error, _reason} ->
         signal.send_message(
           sender_uuid,
-          "❌ Couldn't find that book. Check the spelling and try again."
+          "Couldn't find that book. Check the spelling and try again."
         )
 
         :ok
@@ -335,7 +341,7 @@ defmodule YonderbookClubs.Bot.Router do
 
     case Suggestions.create_suggestion(club, attrs) do
       {:ok, :duplicate} ->
-        signal.send_message(sender_uuid, "👍 Already suggested — no duplicates needed.")
+        signal.send_message(sender_uuid, "That one's already on the list.")
         :ok
 
       {:ok, suggestion} ->
@@ -347,7 +353,7 @@ defmodule YonderbookClubs.Bot.Router do
         :ok
 
       {:error, _changeset} ->
-        signal.send_message(sender_uuid, "❌ Something went wrong. Try again.")
+        signal.send_message(sender_uuid, "Something went wrong. Try again in a minute.")
         :ok
     end
   end

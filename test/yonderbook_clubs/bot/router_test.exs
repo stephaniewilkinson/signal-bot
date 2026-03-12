@@ -69,7 +69,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       expect(YonderbookClubs.Signal.Mock, :send_poll, fn "group.abc123", question, options ->
-        assert question =~ "Vote for your next read"
+        assert question =~ "What should we read next?"
         assert "Piranesi" in options
         assert "Babel" in options
         :ok
@@ -121,7 +121,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       Clubs.set_voting_active(club, true)
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "already in progress"
+        assert body =~ "already open"
         :ok
       end)
 
@@ -219,7 +219,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       mock_list_groups_with_club()
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "Nothing to remove"
+        assert body =~ "don't have any suggestions"
         :ok
       end)
 
@@ -232,7 +232,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "add me to a book club"
+        assert body =~ "not in any of your group chats"
         :ok
       end)
 
