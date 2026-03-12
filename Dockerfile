@@ -50,11 +50,19 @@ RUN apt-get update -y && \
       locales \
       ca-certificates \
       curl \
-      netcat-openbsd \
-      openjdk-21-jre-headless && \
+      netcat-openbsd && \
     sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
     locale-gen && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Eclipse Temurin JRE 25 (signal-cli 0.14.1 requires Java 25+)
+RUN curl -L -o /tmp/temurin.tar.gz \
+      "https://api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jre/hotspot/normal/eclipse" && \
+    mkdir -p /opt/java && \
+    tar xzf /tmp/temurin.tar.gz -C /opt/java --strip-components=1 && \
+    rm /tmp/temurin.tar.gz
+ENV JAVA_HOME=/opt/java
+ENV PATH="$JAVA_HOME/bin:$PATH"
 
 # Install signal-cli
 RUN curl -L -o /tmp/signal-cli.tar.gz \
