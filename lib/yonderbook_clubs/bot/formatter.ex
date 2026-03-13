@@ -5,7 +5,7 @@ defmodule YonderbookClubs.Bot.Formatter do
   Pure functions that take data and return formatted strings. No side effects.
   """
 
-  @max_description_length 500
+  @max_description_length 400
 
   def format_blurbs(suggestions, vote_budget) do
     n = length(suggestions)
@@ -26,18 +26,22 @@ defmodule YonderbookClubs.Bot.Formatter do
     case suggestion.description do
       nil -> title_line
       "" -> title_line
-      description -> title_line <> "\n" <> truncate(description, @max_description_length)
+      description ->
+        title_line <> "\n" <> truncate_with_link(description, @max_description_length, suggestion.open_library_work_id)
     end
   end
 
-  defp truncate(text, max_length) do
+  defp truncate_with_link(text, max_length, work_id) do
     if String.length(text) <= max_length do
       text
     else
-      text
-      |> String.slice(0, max_length)
-      |> String.trim_trailing()
-      |> Kernel.<>("…")
+      truncated =
+        text
+        |> String.slice(0, max_length)
+        |> String.trim_trailing()
+
+      link = if work_id, do: " (https://openlibrary.org/works/#{work_id})", else: ""
+      truncated <> "…" <> link
     end
   end
 
@@ -76,7 +80,7 @@ defmodule YonderbookClubs.Bot.Formatter do
       case suggestion.description do
         nil -> ""
         "" -> ""
-        desc -> "\n\n" <> truncate(desc, @max_description_length)
+        desc -> "\n\n" <> truncate_with_link(desc, @max_description_length, suggestion.open_library_work_id)
       end
 
     "Added #{suggestion.title} by #{suggestion.author} to the list of suggestions for #{club_name}.#{blurb}\n\nSay /remove to undo."

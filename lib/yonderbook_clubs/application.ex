@@ -3,6 +3,8 @@ defmodule YonderbookClubs.Application do
 
   @impl true
   def start(_type, _args) do
+    Logger.add_handlers(:yonderbook_clubs)
+
     children =
       [
         YonderbookClubs.Repo,

@@ -10,7 +10,8 @@ defmodule YonderbookClubs.Bot.FormatterTest do
         author: "Susanna Clarke",
         description:
           "A man lives alone in a labyrinthine house of infinite halls and vast oceans.",
-        cover_url: "https://covers.openlibrary.org/b/id/10520612-M.jpg"
+        cover_url: "https://covers.openlibrary.org/b/id/10520612-M.jpg",
+        open_library_work_id: "OL20846689W"
       },
       attrs
     )
@@ -47,12 +48,13 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       assert result =~ "pick up to 3"
     end
 
-    test "truncates descriptions longer than 500 characters" do
-      long_description = String.duplicate("a", 550)
+    test "truncates descriptions longer than 400 characters with Open Library link" do
+      long_description = String.duplicate("a", 450)
       suggestions = [build_suggestion(%{description: long_description})]
       result = Formatter.format_blurbs(suggestions, 1)
 
       assert result =~ "…"
+      assert result =~ "openlibrary.org/works/OL20846689W"
       refute result =~ long_description
     end
 

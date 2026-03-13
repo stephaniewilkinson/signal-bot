@@ -2,5 +2,7 @@ import Config
 
 config :logger, level: :info
 
-config :logger,
-  backends: [:console, Sentry.LoggerBackend]
+config :yonderbook_clubs, :logger, [
+  {:handler, :sentry_handler, Sentry.LoggerHandler,
+   %{config: %{capture_log_messages: true, level: :error}}}
+]
