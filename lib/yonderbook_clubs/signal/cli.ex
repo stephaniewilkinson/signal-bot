@@ -273,6 +273,8 @@ defmodule YonderbookClubs.Signal.CLI do
   end
 
   defp dispatch_notification(%{"params" => %{"envelope" => envelope}} = _notification) do
+    Logger.info("RAW_ENVELOPE #{inspect(envelope)}")
+
     # Extract the envelope from the JSON-RPC notification and build a flat map
     # for the router. Only dispatch if there's a dataMessage (skip typing indicators, etc.)
     case envelope do
