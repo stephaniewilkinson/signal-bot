@@ -158,10 +158,35 @@ defmodule YonderbookClubs.Books do
 
     case Req.get(url) do
       {:ok, %{status: 200, body: %{"description" => desc}}} ->
-        extract_description(desc)
+        case extract_description(desc) do
+          nil -> fetch_english_edition_description(work_key)
+          text -> text
+        end
 
       _other ->
         nil
+    end
+  end
+
+  defp fetch_english_edition_description(work_key) do
+    url = "#{@open_library_base}#{work_key}/editions.json?limit=20"
+
+    case Req.get(url) do
+      {:ok, %{status: 200, body: %{"entries" => editions}}} ->
+        editions
+        |> Enum.find_value(fn edition ->
+          if english_edition?(edition), do: extract_description(edition["description"])
+        end)
+
+      _other ->
+        nil
+    end
+  end
+
+  defp english_edition?(edition) do
+    case edition["languages"] do
+      [%{"key" => "/languages/eng"} | _] -> true
+      _ -> false
     end
   end
 
