@@ -86,6 +86,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
     test "start vote N parses vote budget" do
       club = create_club()
       add_suggestion(club, "Piranesi", "Susanna Clarke")
+      add_suggestion(club, "Babel", "RF Kuang")
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
         assert body =~ "pick up to 3"
@@ -132,6 +133,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
     test "start vote is case insensitive" do
       club = create_club()
       add_suggestion(club, "Piranesi", "Susanna Clarke")
+      add_suggestion(club, "Babel", "RF Kuang")
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", _body -> :ok end)
 

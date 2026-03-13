@@ -75,18 +75,28 @@ defmodule YonderbookClubs.Bot.Router do
       {:ok, club} = Clubs.set_voting_active(club, true)
 
       blurbs = Formatter.format_blurbs(suggestions, vote_budget)
-      question = Formatter.format_poll_question(vote_budget)
-      options = Formatter.format_poll_options(suggestions)
 
-      with :ok <- signal.send_message(group_id, blurbs),
-           :ok <- signal.send_poll(group_id, question, options) do
-        Suggestions.archive_all_suggestions(club)
-        :ok
-      else
-        {:error, reason} ->
-          Logger.error("Failed to send vote messages to group #{group_id}: #{inspect(reason)}")
+      if length(suggestions) < 2 do
+        with :ok <- signal.send_message(group_id, blurbs) do
+          signal.send_message(group_id, "Only one suggestion — no poll needed. Let's read it!")
+          Suggestions.archive_all_suggestions(club)
           Clubs.set_voting_active(club, false)
           :ok
+        end
+      else
+        question = Formatter.format_poll_question(vote_budget)
+        options = Formatter.format_poll_options(suggestions)
+
+        with :ok <- signal.send_message(group_id, blurbs),
+             :ok <- signal.send_poll(group_id, question, options) do
+          Suggestions.archive_all_suggestions(club)
+          :ok
+        else
+          {:error, reason} ->
+            Logger.error("Failed to send vote messages to group #{group_id}: #{inspect(reason)}")
+            Clubs.set_voting_active(club, false)
+            :ok
+        end
       end
     end
   end
