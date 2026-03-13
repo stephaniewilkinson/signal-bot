@@ -67,8 +67,9 @@ defmodule YonderbookClubs.Signal.CLI do
 
     case call_rpc("sendPollCreate", params) do
       {:ok, result} ->
-        Logger.info("SEND_POLL success: #{inspect(result)}")
-        :ok
+        timestamp = result["timestamp"]
+        Logger.info("SEND_POLL success: timestamp=#{timestamp}")
+        {:ok, timestamp}
 
       {:error, reason} = error ->
         Logger.error("SEND_POLL failed: #{inspect(reason)}")
@@ -278,6 +279,18 @@ defmodule YonderbookClubs.Signal.CLI do
     # Extract the envelope from the JSON-RPC notification and build a flat map
     # for the router. Only dispatch if there's a dataMessage (skip typing indicators, etc.)
     case envelope do
+      %{"dataMessage" => %{"pollVote" => poll_vote}} when is_map(poll_vote) ->
+        vote_msg = %{
+          "sourceUuid" => envelope["sourceUuid"],
+          "targetSentTimestamp" => poll_vote["targetSentTimestamp"],
+          "optionIndexes" => poll_vote["optionIndexes"] || [],
+          "voteCount" => poll_vote["voteCount"]
+        }
+
+        Task.Supervisor.start_child(YonderbookClubs.TaskSupervisor, fn ->
+          YonderbookClubs.Bot.Router.handle_poll_vote(vote_msg)
+        end)
+
       %{"dataMessage" => %{"message" => message}} when is_binary(message) ->
         msg =
           %{

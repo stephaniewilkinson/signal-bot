@@ -72,7 +72,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         assert question =~ "What should we read next?"
         assert "Piranesi" in options
         assert "Babel" in options
-        :ok
+        {:ok, 1234567890}
       end)
 
       assert :ok = Router.handle_message(group_message("group.abc123", "start vote 1"))
@@ -104,7 +104,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       expect(YonderbookClubs.Signal.Mock, :send_poll, fn "group.abc123", question, _options ->
         assert question =~ "Pick 3"
-        :ok
+        {:ok, 1234567890}
       end)
 
       assert :ok = Router.handle_message(group_message("group.abc123", "start vote 3"))
@@ -146,7 +146,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", _body, _attachments -> :ok end)
 
       expect(YonderbookClubs.Signal.Mock, :send_poll, fn "group.abc123", _question, _options ->
-        :ok
+        {:ok, 1234567890}
       end)
 
       assert :ok = Router.handle_message(group_message("group.abc123", "START VOTE 1"))
@@ -256,13 +256,32 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       mock_list_groups_with_club()
 
-      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
         assert body =~ "Piranesi"
+        assert body =~ "Test Club"
         assert body =~ "remove"
         :ok
       end)
 
       assert :ok = Router.handle_message(dm_message("suggest Piranesi by Susanna Clarke"))
+
+      suggestions = Suggestions.list_suggestions(club)
+      assert length(suggestions) == 1
+      assert hd(suggestions).title =~ "Piranesi"
+    end
+
+    test "suggest Author, Title format works (integration)" do
+      club = create_club()
+
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
+        assert body =~ "Piranesi"
+        assert body =~ "Susanna Clarke"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest Susanna Clarke, Piranesi"))
 
       suggestions = Suggestions.list_suggestions(club)
       assert length(suggestions) == 1
@@ -311,6 +330,77 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert :ok = Router.handle_message(dm_message("what is this"))
+    end
+  end
+
+  # --- Poll Vote Tests ---
+
+  describe "poll votes" do
+    test "handle_poll_vote records a vote for an active poll" do
+      club = create_club()
+      s1 = add_suggestion(club, "Piranesi", "Susanna Clarke")
+      s2 = add_suggestion(club, "Babel", "RF Kuang")
+
+      {:ok, poll} = YonderbookClubs.Polls.create_poll(club, 1234567890, 1, [s1, s2])
+
+      vote_msg = %{
+        "sourceUuid" => "uuid-voter",
+        "targetSentTimestamp" => 1234567890,
+        "optionIndexes" => [0],
+        "voteCount" => 1
+      }
+
+      assert :ok = Router.handle_poll_vote(vote_msg)
+
+      results = YonderbookClubs.Polls.get_results(poll)
+      {_piranesi, count} = Enum.find(results, fn {s, _} -> s.title == "Piranesi" end)
+      assert count == 1
+    end
+
+    test "handle_poll_vote ignores unknown timestamps" do
+      assert :noop = Router.handle_poll_vote(%{
+        "sourceUuid" => "uuid-voter",
+        "targetSentTimestamp" => 9999999999,
+        "optionIndexes" => [0],
+        "voteCount" => 1
+      })
+    end
+  end
+
+  # --- Results Tests ---
+
+  describe "group messages - results" do
+    test "results shows vote counts for the latest poll" do
+      club = create_club()
+      s1 = add_suggestion(club, "Piranesi", "Susanna Clarke")
+      s2 = add_suggestion(club, "Babel", "RF Kuang")
+
+      {:ok, poll} = YonderbookClubs.Polls.create_poll(club, 1234567890, 1, [s1, s2])
+      YonderbookClubs.Polls.record_vote(poll, "uuid-voter1", [0], 1)
+      YonderbookClubs.Polls.record_vote(poll, "uuid-voter2", [0], 1)
+      YonderbookClubs.Polls.record_vote(poll, "uuid-voter3", [1], 1)
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Live results"
+        assert body =~ "Piranesi"
+        assert body =~ "2 votes"
+        assert body =~ "Babel"
+        assert body =~ "1 vote"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "results"))
+    end
+
+    test "results with no polls tells the user" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "No polls yet"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "results"))
     end
   end
 

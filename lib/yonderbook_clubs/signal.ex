@@ -12,7 +12,7 @@ defmodule YonderbookClubs.Signal do
   @callback send_message(recipient :: String.t(), body :: String.t(), attachments :: [String.t()]) ::
               :ok | {:error, term()}
   @callback send_poll(group_id :: String.t(), question :: String.t(), options :: [String.t()]) ::
-              :ok | {:error, term()}
+              {:ok, integer()} | {:error, term()}
   @callback list_groups() :: {:ok, [map()]} | {:error, term()}
 
   def impl do

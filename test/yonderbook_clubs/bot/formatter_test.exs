@@ -123,11 +123,28 @@ defmodule YonderbookClubs.Bot.FormatterTest do
   end
 
   describe "format_confirmation/2" do
-    test "includes title and author" do
-      result = Formatter.format_confirmation("Piranesi", "Susanna Clarke")
+    test "includes title, author, and club name" do
+      suggestion = build_suggestion()
+      result = Formatter.format_confirmation(suggestion, "Book Nerds")
 
       assert result =~ "Piranesi by Susanna Clarke"
+      assert result =~ "Book Nerds"
       assert result =~ "remove"
+    end
+
+    test "includes description blurb" do
+      suggestion = build_suggestion(%{description: "A mysterious house."})
+      result = Formatter.format_confirmation(suggestion, "Book Nerds")
+
+      assert result =~ "A mysterious house."
+    end
+
+    test "handles nil description" do
+      suggestion = build_suggestion(%{description: nil})
+      result = Formatter.format_confirmation(suggestion, "Book Nerds")
+
+      assert result =~ "Piranesi by Susanna Clarke"
+      refute result =~ "\n\n\n"
     end
   end
 

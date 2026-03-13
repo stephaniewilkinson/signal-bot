@@ -10,6 +10,7 @@ Send these as a direct message to the bot.
 |---|---|
 | `/help` | Show available commands |
 | `/suggest Title by Author` | Suggest a book by title and author |
+| `/suggest Author, Title` | Suggest a book by author and title |
 | `/suggest 978-1635575996` | Suggest a book by ISBN |
 | `/suggest ai: that infinite house book` | Suggest a book using AI to identify it from a loose description |
 | `/suggest #2 Title by Author` | Suggest a book for a specific club (when you're in multiple clubs) |
@@ -25,3 +26,4 @@ Send these in the group chat.
 | `/start vote` | Prompts you for how many books should win |
 | `/start vote N` | Start a vote where members can pick up to N books |
 | `/close vote` | Close the current vote |
+| `/results` | Show current vote results |

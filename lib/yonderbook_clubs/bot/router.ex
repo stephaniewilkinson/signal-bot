@@ -8,6 +8,7 @@ defmodule YonderbookClubs.Bot.Router do
 
   alias YonderbookClubs.Bot.Formatter
   alias YonderbookClubs.Clubs
+  alias YonderbookClubs.Polls
   alias YonderbookClubs.Suggestions
 
   require Logger
@@ -15,6 +16,7 @@ defmodule YonderbookClubs.Bot.Router do
   # ISBN pattern: 10 or 13 digits, optionally separated by hyphens, 13-digit may start with 978/979
   @isbn_regex ~r/^[\d\-]{10,17}$/
   @title_by_author_regex ~r/^(.+?)\s+by\s+(.+)$/i
+  @author_comma_title_regex ~r/^(.+?),\s+(.+)$/
   @club_prefix_regex ~r/^#(\d+)\s+/
 
   @doc """
@@ -38,6 +40,26 @@ defmodule YonderbookClubs.Bot.Router do
     :noop
   end
 
+  @doc """
+  Handles an incoming poll vote notification from signal-cli.
+  """
+  def handle_poll_vote(%{"targetSentTimestamp" => timestamp} = msg) do
+    case Polls.get_poll_by_timestamp(timestamp) do
+      nil -> :noop
+      poll ->
+        Polls.record_vote(
+          poll,
+          msg["sourceUuid"],
+          msg["optionIndexes"],
+          msg["voteCount"]
+        )
+
+        :ok
+    end
+  end
+
+  def handle_poll_vote(_msg), do: :noop
+
   # --- Group Commands ---
 
   defp handle_group_message(group_id, text) do
@@ -55,6 +77,9 @@ defmodule YonderbookClubs.Bot.Router do
 
       "close vote" ->
         handle_close_vote(group_id)
+
+      "results" ->
+        handle_results(group_id)
 
       _ ->
         :noop
@@ -95,7 +120,8 @@ defmodule YonderbookClubs.Bot.Router do
         options = Formatter.format_poll_options(suggestions)
 
         with :ok <- signal.send_message(group_id, blurbs, cover_paths),
-             :ok <- signal.send_poll(group_id, question, options) do
+             {:ok, poll_timestamp} <- signal.send_poll(group_id, question, options) do
+          Polls.create_poll(club, poll_timestamp, vote_budget, suggestions)
           Suggestions.archive_all_suggestions(club)
           cleanup_covers(cover_paths)
           :ok
@@ -151,8 +177,35 @@ defmodule YonderbookClubs.Bot.Router do
 
       club ->
         Clubs.set_voting_active(club, false)
+
+        case Polls.get_latest_active_poll(club) do
+          %{status: :active} = poll -> Polls.close_poll(poll)
+          _ -> :ok
+        end
+
         YonderbookClubs.Signal.impl().send_message(group_id, "Vote closed.")
         :ok
+    end
+  end
+
+  defp handle_results(group_id) do
+    signal = YonderbookClubs.Signal.impl()
+
+    case Clubs.get_club_by_group_id(group_id) do
+      nil ->
+        :noop
+
+      club ->
+        case Polls.get_latest_poll(club) do
+          nil ->
+            signal.send_message(group_id, "No polls yet. Start one with /start vote.")
+            :ok
+
+          poll ->
+            results = Polls.get_results(poll)
+            signal.send_message(group_id, Formatter.format_results(results, poll.status))
+            :ok
+        end
     end
   end
 
@@ -336,6 +389,10 @@ defmodule YonderbookClubs.Bot.Router do
         [_, title, author] = Regex.run(@title_by_author_regex, text)
         handle_title_author_suggestion(sender_uuid, club, String.trim(title), String.trim(author))
 
+      Regex.match?(@author_comma_title_regex, text) ->
+        [_, author, title] = Regex.run(@author_comma_title_regex, text)
+        handle_title_author_suggestion(sender_uuid, club, String.trim(title), String.trim(author))
+
       true ->
         signal.send_message(sender_uuid, Formatter.format_help())
         :ok
@@ -412,10 +469,11 @@ defmodule YonderbookClubs.Bot.Router do
         :ok
 
       {:ok, suggestion} ->
-        signal.send_message(
-          sender_uuid,
-          Formatter.format_confirmation(suggestion.title, suggestion.author)
-        )
+        confirmation = Formatter.format_confirmation(suggestion, club.name)
+        cover_paths = download_covers([suggestion])
+
+        signal.send_message(sender_uuid, confirmation, cover_paths)
+        cleanup_covers(cover_paths)
 
         :ok
 
