@@ -90,14 +90,6 @@ defmodule YonderbookClubs.Bot.Router do
           Clubs.set_voting_active(club, false)
           {:error, :not_enough_suggestions}
 
-        length(suggestions) > 12 ->
-          signal.send_message(
-            group_id,
-            "Too many suggestions (#{length(suggestions)}). Signal polls max out at 12 options. Use /remove to trim the list."
-          )
-          Clubs.set_voting_active(club, false)
-          {:error, :too_many_suggestions}
-
         true ->
         question = Formatter.format_poll_question(vote_budget)
         options = Formatter.format_poll_options(suggestions)
@@ -311,7 +303,24 @@ defmodule YonderbookClubs.Bot.Router do
     end
   end
 
+  @max_poll_options 12
+
   defp process_suggestion(sender_uuid, club, text) do
+    signal = YonderbookClubs.Signal.impl()
+    active_count = length(Suggestions.list_suggestions(club))
+
+    if active_count >= @max_poll_options do
+      signal.send_message(
+        sender_uuid,
+        "Ready to start the vote! I can't accept more suggestions. Say /start vote in the group chat to start voting."
+      )
+      :ok
+    else
+      process_suggestion_input(sender_uuid, club, text)
+    end
+  end
+
+  defp process_suggestion_input(sender_uuid, club, text) do
     signal = YonderbookClubs.Signal.impl()
 
     cond do

@@ -138,26 +138,6 @@ defmodule YonderbookClubs.Bot.RouterTest do
                Router.handle_message(group_message("group.abc123", "start vote 1"))
     end
 
-    test "start vote with more than 12 suggestions replies with error" do
-      club = create_club()
-
-      for i <- 1..13 do
-        add_suggestion(club, "Book #{i}", "Author #{i}")
-      end
-
-      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "Too many suggestions"
-        assert body =~ "12"
-        :ok
-      end)
-
-      assert {:error, :too_many_suggestions} =
-               Router.handle_message(group_message("group.abc123", "start vote 1"))
-
-      updated_club = Clubs.get_club_by_group_id("group.abc123")
-      assert updated_club.voting_active == false
-    end
-
     test "start vote is case insensitive" do
       club = create_club()
       add_suggestion(club, "Piranesi", "Susanna Clarke")
@@ -287,6 +267,26 @@ defmodule YonderbookClubs.Bot.RouterTest do
       suggestions = Suggestions.list_suggestions(club)
       assert length(suggestions) == 1
       assert hd(suggestions).title =~ "Piranesi"
+    end
+
+    test "suggest when pool is full replies with start vote prompt" do
+      club = create_club()
+
+      for i <- 1..12 do
+        add_suggestion(club, "Book #{i}", "Author #{i}")
+      end
+
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Ready to start the vote"
+        assert body =~ "/start vote"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest Another Book by Another Author"))
+
+      assert length(Suggestions.list_suggestions(club)) == 12
     end
 
     test "suggest with unrecognized format sends help" do
