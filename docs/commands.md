@@ -14,6 +14,7 @@ Send these as a direct message to the bot.
 | `/suggest ai: that infinite house book` | Suggest a book using AI to identify it from a loose description |
 | `/suggest #2 Title by Author` | Suggest a book for a specific club (when you're in multiple clubs) |
 | `/remove` | Remove your most recent suggestion |
+| `/suggestions` | List your active and archived suggestions |
 
 ## Group Commands
 

@@ -71,4 +71,21 @@ defmodule YonderbookClubs.Suggestions do
     |> where(club_id: ^club.id, status: :active)
     |> Repo.update_all(set: [status: :archived, updated_at: DateTime.utc_now()])
   end
+
+  @doc """
+  Returns all suggestions by a sender for a club, grouped by status.
+  Returns `%{active: [...], archived: [...]}`.
+  """
+  def list_suggestions_by_sender(club_id, signal_sender_uuid) do
+    suggestions =
+      Suggestion
+      |> where(club_id: ^club_id, signal_sender_uuid: ^signal_sender_uuid)
+      |> order_by(desc: :inserted_at)
+      |> Repo.all()
+
+    %{
+      active: Enum.filter(suggestions, &(&1.status == :active)),
+      archived: Enum.filter(suggestions, &(&1.status == :archived))
+    }
+  end
 end

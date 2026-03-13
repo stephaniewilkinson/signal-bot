@@ -58,7 +58,8 @@ defmodule YonderbookClubs.Bot.Formatter do
     /suggest Piranesi by Susanna Clarke
     /suggest 978-1635575996
 
-    Undo: /remove
+    /remove — undo your last suggestion
+    /suggestions — see your suggestions
 
     Not sure of the title?
     /suggest ai: that infinite house book\
@@ -67,6 +68,32 @@ defmodule YonderbookClubs.Bot.Formatter do
 
   def format_confirmation(title, author) do
     "Added #{title} by #{author}.\nSay /remove to undo."
+  end
+
+  def format_suggestions_list(%{active: active, archived: archived}) do
+    parts = []
+
+    parts =
+      if active != [] do
+        lines = Enum.map(active, fn s -> "  #{s.title} — #{s.author}" end)
+        parts ++ ["Active:\n" <> Enum.join(lines, "\n")]
+      else
+        parts
+      end
+
+    parts =
+      if archived != [] do
+        lines = Enum.map(archived, fn s -> "  #{s.title} — #{s.author}" end)
+        parts ++ ["Archived:\n" <> Enum.join(lines, "\n")]
+      else
+        parts
+      end
+
+    if parts == [] do
+      "You haven't suggested any books yet."
+    else
+      Enum.join(parts, "\n\n")
+    end
   end
 
   def format_club_list(clubs) do

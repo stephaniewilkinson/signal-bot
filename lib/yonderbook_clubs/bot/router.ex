@@ -161,6 +161,9 @@ defmodule YonderbookClubs.Bot.Router do
       "remove" ->
         handle_remove(sender_uuid)
 
+      "suggestions" ->
+        handle_suggestions(sender_uuid)
+
       "suggest " <> _ ->
         handle_suggest(sender_uuid, stripped)
 
@@ -203,6 +206,29 @@ defmodule YonderbookClubs.Bot.Router do
           "Something went wrong. Try again in a minute."
         )
 
+        :ok
+
+      {:error, :multiple_clubs, clubs} ->
+        signal.send_message(sender_uuid, Formatter.format_club_list(clubs))
+        :ok
+    end
+  end
+
+  defp handle_suggestions(sender_uuid) do
+    signal = YonderbookClubs.Signal.impl()
+
+    case resolve_club(sender_uuid) do
+      {:ok, club} ->
+        grouped = Suggestions.list_suggestions_by_sender(club.id, sender_uuid)
+        signal.send_message(sender_uuid, Formatter.format_suggestions_list(grouped))
+        :ok
+
+      {:error, :no_clubs} ->
+        signal.send_message(sender_uuid, "I'm not in any of your group chats yet. Add me to a group first.")
+        :ok
+
+      {:error, :signal_unavailable} ->
+        signal.send_message(sender_uuid, "Something went wrong. Try again in a minute.")
         :ok
 
       {:error, :multiple_clubs, clubs} ->
