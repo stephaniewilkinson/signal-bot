@@ -5,7 +5,7 @@ defmodule YonderbookClubs.Bot.Formatter do
   Pure functions that take data and return formatted strings. No side effects.
   """
 
-  @max_description_length 200
+  @max_description_length 500
 
   def format_blurbs(suggestions, vote_budget) do
     n = length(suggestions)
