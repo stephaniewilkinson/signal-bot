@@ -138,6 +138,26 @@ defmodule YonderbookClubs.Bot.RouterTest do
                Router.handle_message(group_message("group.abc123", "start vote 1"))
     end
 
+    test "start vote with more than 12 suggestions replies with error" do
+      club = create_club()
+
+      for i <- 1..13 do
+        add_suggestion(club, "Book #{i}", "Author #{i}")
+      end
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Too many suggestions"
+        assert body =~ "12"
+        :ok
+      end)
+
+      assert {:error, :too_many_suggestions} =
+               Router.handle_message(group_message("group.abc123", "start vote 1"))
+
+      updated_club = Clubs.get_club_by_group_id("group.abc123")
+      assert updated_club.voting_active == false
+    end
+
     test "start vote is case insensitive" do
       club = create_club()
       add_suggestion(club, "Piranesi", "Susanna Clarke")

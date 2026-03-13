@@ -81,14 +81,24 @@ defmodule YonderbookClubs.Bot.Router do
       blurbs = Formatter.format_blurbs(suggestions, vote_budget)
       cover_paths = download_covers(suggestions)
 
-      if length(suggestions) < 2 do
-        signal.send_message(
-          group_id,
-          "I've only received one suggestion. DM me another suggestion and then I'll be ready to create the poll."
-        )
-        Clubs.set_voting_active(club, false)
-        {:error, :not_enough_suggestions}
-      else
+      cond do
+        length(suggestions) < 2 ->
+          signal.send_message(
+            group_id,
+            "I've only received one suggestion. DM me another suggestion and then I'll be ready to create the poll."
+          )
+          Clubs.set_voting_active(club, false)
+          {:error, :not_enough_suggestions}
+
+        length(suggestions) > 12 ->
+          signal.send_message(
+            group_id,
+            "Too many suggestions (#{length(suggestions)}). Signal polls max out at 12 options. Use /remove to trim the list."
+          )
+          Clubs.set_voting_active(club, false)
+          {:error, :too_many_suggestions}
+
+        true ->
         question = Formatter.format_poll_question(vote_budget)
         options = Formatter.format_poll_options(suggestions)
 
