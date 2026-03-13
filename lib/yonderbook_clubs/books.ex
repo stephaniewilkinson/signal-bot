@@ -29,7 +29,11 @@ defmodule YonderbookClubs.Books do
     end
   end
 
-  defp search_general(query) do
+  @doc """
+  General free-text search on Open Library. Used as a fallback when no
+  structured pattern (title by author, ISBN, etc.) matches the input.
+  """
+  def search_general(query) do
     url = "#{@open_library_base}/search.json"
 
     case Req.get(url, params: [q: query, limit: 1]) do

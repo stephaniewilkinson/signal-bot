@@ -374,8 +374,6 @@ defmodule YonderbookClubs.Bot.Router do
   end
 
   defp process_suggestion_input(sender_uuid, club, text) do
-    signal = YonderbookClubs.Signal.impl()
-
     cond do
       String.starts_with?(String.downcase(text), "ai:") ->
         ai_text = String.slice(text, 3..-1//1) |> String.trim()
@@ -394,7 +392,22 @@ defmodule YonderbookClubs.Bot.Router do
         handle_title_author_suggestion(sender_uuid, club, String.trim(title), String.trim(author))
 
       true ->
-        signal.send_message(sender_uuid, Formatter.format_help())
+        handle_freetext_suggestion(sender_uuid, club, text)
+    end
+  end
+
+  defp handle_freetext_suggestion(sender_uuid, club, text) do
+    signal = YonderbookClubs.Signal.impl()
+
+    case YonderbookClubs.Books.search_general(text) do
+      {:ok, book_data} ->
+        save_suggestion(sender_uuid, club, book_data)
+
+      {:error, _reason} ->
+        signal.send_message(
+          sender_uuid,
+          "Couldn't find that book. Try:\n/suggest Title by Author\n/suggest Author, Title"
+        )
         :ok
     end
   end

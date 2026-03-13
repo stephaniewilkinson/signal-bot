@@ -308,17 +308,33 @@ defmodule YonderbookClubs.Bot.RouterTest do
       assert length(Suggestions.list_suggestions(club)) == 12
     end
 
-    test "suggest with unrecognized format sends help" do
+    test "suggest with free text that finds no results gives error" do
       _club = create_club()
 
       mock_list_groups_with_club()
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "suggest"
+        assert body =~ "Couldn't find that book"
         :ok
       end)
 
-      assert :ok = Router.handle_message(dm_message("suggest foobar"))
+      assert :ok = Router.handle_message(dm_message("suggest asdfghjkl nonsense"))
+    end
+
+    test "suggest with free text searches Open Library (integration)" do
+      club = create_club()
+
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
+        assert body =~ "Brimstone"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest Callie Hart Brimstone"))
+
+      suggestions = Suggestions.list_suggestions(club)
+      assert length(suggestions) == 1
     end
   end
 
