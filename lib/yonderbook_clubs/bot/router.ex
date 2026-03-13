@@ -77,12 +77,12 @@ defmodule YonderbookClubs.Bot.Router do
       blurbs = Formatter.format_blurbs(suggestions, vote_budget)
 
       if length(suggestions) < 2 do
-        with :ok <- signal.send_message(group_id, blurbs) do
-          signal.send_message(group_id, "Only one suggestion — no poll needed. Let's read it!")
-          Suggestions.archive_all_suggestions(club)
-          Clubs.set_voting_active(club, false)
-          :ok
-        end
+        signal.send_message(
+          group_id,
+          "I've only received one suggestion. DM me another suggestion and then I'll be ready to create the poll."
+        )
+        Clubs.set_voting_active(club, false)
+        {:error, :not_enough_suggestions}
       else
         question = Formatter.format_poll_question(vote_budget)
         options = Formatter.format_poll_options(suggestions)
