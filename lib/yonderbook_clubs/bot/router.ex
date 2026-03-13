@@ -164,7 +164,7 @@ defmodule YonderbookClubs.Bot.Router do
         handle_suggest(sender_uuid, text)
 
       _ ->
-        signal.send_message(sender_uuid, Formatter.format_help())
+        signal.send_message(sender_uuid, "I didn't catch that. Say \"help\" for help.")
         :ok
     end
   end

@@ -276,9 +276,9 @@ defmodule YonderbookClubs.Bot.RouterTest do
   end
 
   describe "DM messages - unrecognized" do
-    test "unrecognized DM sends help message" do
+    test "unrecognized DM sends fallback message" do
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "suggest"
+        assert body =~ "I didn't catch that"
         :ok
       end)
 
