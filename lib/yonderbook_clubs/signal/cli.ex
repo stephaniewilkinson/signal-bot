@@ -63,9 +63,16 @@ defmodule YonderbookClubs.Signal.CLI do
       "options" => options
     }
 
+    Logger.info("SEND_POLL calling sendPollCreate with params: #{inspect(params)}")
+
     case call_rpc("sendPollCreate", params) do
-      {:ok, _} -> :ok
-      {:error, _} = error -> error
+      {:ok, result} ->
+        Logger.info("SEND_POLL success: #{inspect(result)}")
+        :ok
+
+      {:error, reason} = error ->
+        Logger.error("SEND_POLL failed: #{inspect(reason)}")
+        error
     end
   end
 
