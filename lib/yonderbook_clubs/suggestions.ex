@@ -31,7 +31,7 @@ defmodule YonderbookClubs.Suggestions do
 
   defp duplicate?(club_id, open_library_work_id) do
     Suggestion
-    |> where(club_id: ^club_id, open_library_work_id: ^open_library_work_id)
+    |> where(club_id: ^club_id, open_library_work_id: ^open_library_work_id, status: :active)
     |> Repo.exists?()
   end
 
@@ -40,7 +40,7 @@ defmodule YonderbookClubs.Suggestions do
   """
   def list_suggestions(club) do
     Suggestion
-    |> where(club_id: ^club.id)
+    |> where(club_id: ^club.id, status: :active)
     |> order_by(asc: :inserted_at, asc: :id)
     |> Repo.all()
   end
@@ -53,7 +53,7 @@ defmodule YonderbookClubs.Suggestions do
   def remove_latest_suggestion(club_id, signal_sender_uuid) do
     query =
       Suggestion
-      |> where(club_id: ^club_id, signal_sender_uuid: ^signal_sender_uuid)
+      |> where(club_id: ^club_id, signal_sender_uuid: ^signal_sender_uuid, status: :active)
       |> order_by(desc: :inserted_at, desc: :id)
       |> limit(1)
 
@@ -64,11 +64,11 @@ defmodule YonderbookClubs.Suggestions do
   end
 
   @doc """
-  Deletes all suggestions for a club. Returns `{count, nil}`.
+  Archives all active suggestions for a club. Returns `{count, nil}`.
   """
-  def delete_all_suggestions(club) do
+  def archive_all_suggestions(club) do
     Suggestion
-    |> where(club_id: ^club.id)
-    |> Repo.delete_all()
+    |> where(club_id: ^club.id, status: :active)
+    |> Repo.update_all(set: [status: :archived, updated_at: DateTime.utc_now()])
   end
 end

@@ -135,8 +135,8 @@ defmodule YonderbookClubs.SuggestionsTest do
     end
   end
 
-  describe "delete_all_suggestions/1" do
-    test "deletes all suggestions for a club", %{club: club} do
+  describe "archive_all_suggestions/1" do
+    test "archives all active suggestions for a club", %{club: club} do
       {:ok, _} =
         Suggestions.create_suggestion(club, %{
           @valid_attrs
@@ -150,7 +150,7 @@ defmodule YonderbookClubs.SuggestionsTest do
             open_library_work_id: "/works/OL2"
         })
 
-      assert {2, nil} = Suggestions.delete_all_suggestions(club)
+      assert {2, nil} = Suggestions.archive_all_suggestions(club)
       assert Suggestions.list_suggestions(club) == []
     end
   end

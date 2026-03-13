@@ -80,7 +80,7 @@ defmodule YonderbookClubs.Bot.Router do
 
       with :ok <- signal.send_message(group_id, blurbs),
            :ok <- signal.send_poll(group_id, question, options) do
-        Suggestions.delete_all_suggestions(club)
+        Suggestions.archive_all_suggestions(club)
         :ok
       else
         {:error, reason} ->

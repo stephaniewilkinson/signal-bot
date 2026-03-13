@@ -13,6 +13,7 @@ defmodule YonderbookClubs.Suggestions.Suggestion do
     field(:cover_url, :string)
     field(:description, :string)
     field(:signal_sender_uuid, :string)
+    field(:status, Ecto.Enum, values: [:active, :archived], default: :active)
 
     belongs_to(:club, YonderbookClubs.Clubs.Club)
 
