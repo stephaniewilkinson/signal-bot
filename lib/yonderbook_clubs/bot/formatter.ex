@@ -55,18 +55,18 @@ defmodule YonderbookClubs.Bot.Formatter do
   def format_help do
     """
     DM me to suggest a book:
-    "suggest Piranesi by Susanna Clarke"
-    "suggest 978-1635575996"
+    /suggest Piranesi by Susanna Clarke
+    /suggest 978-1635575996
 
-    Undo: "remove"
+    Undo: /remove
 
     Not sure of the title?
-    "suggest ai: that infinite house book"\
+    /suggest ai: that infinite house book\
     """
   end
 
   def format_confirmation(title, author) do
-    "Added #{title} by #{author}.\nSay \"remove\" to undo."
+    "Added #{title} by #{author}.\nSay /remove to undo."
   end
 
   def format_club_list(clubs) do

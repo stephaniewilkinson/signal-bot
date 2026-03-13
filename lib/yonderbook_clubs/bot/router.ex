@@ -41,7 +41,7 @@ defmodule YonderbookClubs.Bot.Router do
   # --- Group Commands ---
 
   defp handle_group_message(group_id, text) do
-    case String.downcase(text) do
+    case text |> strip_slash() |> String.downcase() do
       "start vote " <> rest ->
         n = parse_vote_budget(rest)
         handle_start_vote(group_id, n)
@@ -151,8 +151,9 @@ defmodule YonderbookClubs.Bot.Router do
 
   defp handle_dm(sender_uuid, _sender_name, text) do
     signal = YonderbookClubs.Signal.impl()
+    stripped = strip_slash(text)
 
-    case String.downcase(text) do
+    case String.downcase(stripped) do
       "help" ->
         signal.send_message(sender_uuid, Formatter.format_help())
         :ok
@@ -161,10 +162,10 @@ defmodule YonderbookClubs.Bot.Router do
         handle_remove(sender_uuid)
 
       "suggest " <> _ ->
-        handle_suggest(sender_uuid, text)
+        handle_suggest(sender_uuid, stripped)
 
       _ ->
-        signal.send_message(sender_uuid, "I didn't catch that. Say \"help\" for help.")
+        signal.send_message(sender_uuid, "I didn't catch that. Say /help for help.")
         :ok
     end
   end
@@ -414,4 +415,7 @@ defmodule YonderbookClubs.Bot.Router do
       {:error, :invalid_club_number}
     end
   end
+
+  defp strip_slash("/" <> rest), do: rest
+  defp strip_slash(text), do: text
 end
