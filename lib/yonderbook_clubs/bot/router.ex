@@ -399,7 +399,13 @@ defmodule YonderbookClubs.Bot.Router do
   defp handle_freetext_suggestion(sender_uuid, club, text) do
     signal = YonderbookClubs.Signal.impl()
 
-    case YonderbookClubs.Books.search_general(text) do
+    result =
+      case YonderbookClubs.Books.search_ai(text) do
+        {:ok, _} = ok -> ok
+        {:error, _} -> YonderbookClubs.Books.search_general(text)
+      end
+
+    case result do
       {:ok, book_data} ->
         save_suggestion(sender_uuid, club, book_data)
 
