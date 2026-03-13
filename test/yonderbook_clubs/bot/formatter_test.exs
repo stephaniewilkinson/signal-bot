@@ -86,16 +86,11 @@ defmodule YonderbookClubs.Bot.FormatterTest do
 
   describe "format_poll_question/1" do
     test "formats with single vote budget" do
-      result = Formatter.format_poll_question(1)
-
-      assert result == "What should we read next?"
+      assert Formatter.format_poll_question(1) == "What should we read next? (Pick 1)"
     end
 
     test "formats with multi vote budget" do
-      result = Formatter.format_poll_question(2)
-
-      assert result =~ "Pick up to 2"
-      assert result =~ "2 months of reading"
+      assert Formatter.format_poll_question(3) == "What should we read next? (Pick 3)"
     end
   end
 

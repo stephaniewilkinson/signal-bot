@@ -43,8 +43,8 @@ defmodule YonderbookClubs.Bot.Formatter do
 
   def format_poll_question(vote_budget) do
     case vote_budget do
-      1 -> "What should we read next?"
-      n -> "Pick up to #{n} — choosing #{n} months of reading"
+      1 -> "What should we read next? (Pick 1)"
+      n -> "What should we read next? (Pick #{n})"
     end
   end
 

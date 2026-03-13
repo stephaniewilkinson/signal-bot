@@ -103,8 +103,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       expect(YonderbookClubs.Signal.Mock, :send_poll, fn "group.abc123", question, _options ->
-        assert question =~ "Pick up to 3"
-        assert question =~ "3 months"
+        assert question =~ "Pick 3"
         :ok
       end)
 
