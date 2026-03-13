@@ -35,6 +35,8 @@ defmodule YonderbookClubs.MixProject do
       {:postgrex, "~> 0.19"},
       {:req, "~> 0.5"},
       {:jason, "~> 1.4"},
+      {:sentry, "~> 10.0"},
+      {:hackney, "~> 1.8"},
       {:mox, "~> 1.1", only: :test}
     ]
   end
