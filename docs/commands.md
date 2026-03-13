@@ -22,6 +22,6 @@ Send these in the group chat.
 
 | Command | Description |
 |---|---|
-| `/start vote` | Start a vote with the current suggestions (1 vote per member) |
+| `/start vote` | Prompts you for how many books should win |
 | `/start vote N` | Start a vote where members can pick up to N books |
 | `/close vote` | Close the current vote |
