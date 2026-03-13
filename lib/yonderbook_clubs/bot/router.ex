@@ -79,6 +79,7 @@ defmodule YonderbookClubs.Bot.Router do
       {:ok, club} = Clubs.set_voting_active(club, true)
 
       blurbs = Formatter.format_blurbs(suggestions, vote_budget)
+      cover_paths = download_covers(suggestions)
 
       if length(suggestions) < 2 do
         signal.send_message(
@@ -91,14 +92,16 @@ defmodule YonderbookClubs.Bot.Router do
         question = Formatter.format_poll_question(vote_budget)
         options = Formatter.format_poll_options(suggestions)
 
-        with :ok <- signal.send_message(group_id, blurbs),
+        with :ok <- signal.send_message(group_id, blurbs, cover_paths),
              :ok <- signal.send_poll(group_id, question, options) do
           Suggestions.archive_all_suggestions(club)
+          cleanup_covers(cover_paths)
           :ok
         else
           {:error, reason} ->
             Logger.error("Failed to send vote messages to group #{group_id}: #{inspect(reason)}")
             Clubs.set_voting_active(club, false)
+            cleanup_covers(cover_paths)
             :ok
         end
       end
@@ -448,4 +451,25 @@ defmodule YonderbookClubs.Bot.Router do
 
   defp strip_slash("/" <> rest), do: rest
   defp strip_slash(text), do: text
+
+  defp download_covers(suggestions) do
+    suggestions
+    |> Enum.filter(& &1.cover_url)
+    |> Enum.flat_map(fn suggestion ->
+      case Req.get(suggestion.cover_url) do
+        {:ok, %{status: 200, body: body}} when is_binary(body) ->
+          path = Path.join(System.tmp_dir!(), "cover_#{suggestion.id}.jpg")
+          File.write!(path, body)
+          [path]
+
+        _ ->
+          Logger.warning("Failed to download cover for #{suggestion.title}")
+          []
+      end
+    end)
+  end
+
+  defp cleanup_covers(paths) do
+    Enum.each(paths, &File.rm/1)
+  end
 end

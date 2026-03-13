@@ -61,7 +61,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       add_suggestion(club, "Piranesi", "Susanna Clarke")
       add_suggestion(club, "Babel", "RF Kuang")
 
-      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body, _attachments ->
         assert body =~ "Piranesi"
         assert body =~ "Babel"
         assert body =~ "pick up to 1"
@@ -97,7 +97,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       add_suggestion(club, "Piranesi", "Susanna Clarke")
       add_suggestion(club, "Babel", "RF Kuang")
 
-      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body, _attachments ->
         assert body =~ "pick up to 3"
         :ok
       end)
@@ -143,7 +143,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       add_suggestion(club, "Piranesi", "Susanna Clarke")
       add_suggestion(club, "Babel", "RF Kuang")
 
-      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", _body -> :ok end)
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", _body, _attachments -> :ok end)
 
       expect(YonderbookClubs.Signal.Mock, :send_poll, fn "group.abc123", _question, _options ->
         :ok
