@@ -66,8 +66,10 @@ defmodule YonderbookClubs.Bot.Router do
 
   defp handle_start_vote(group_id, vote_budget) do
     signal = YonderbookClubs.Signal.impl()
+    Logger.info("START_VOTE group_id from message: #{inspect(group_id)}")
 
     with {:ok, club} <- get_or_create_club_for_group(group_id),
+         _ = Logger.info("START_VOTE club_id=#{club.id} group_id=#{club.signal_group_id}"),
          :ok <- check_not_already_voting(club, group_id),
          {:ok, suggestions} <- get_suggestions_for_vote(club, group_id) do
       {:ok, club} = Clubs.set_voting_active(club, true)
@@ -339,6 +341,8 @@ defmodule YonderbookClubs.Bot.Router do
       book_data
       |> Map.put(:signal_sender_uuid, sender_uuid)
 
+    Logger.info("SAVE_SUGGESTION club_id=#{club.id} group_id=#{club.signal_group_id}")
+
     case Suggestions.create_suggestion(club, attrs) do
       {:ok, :duplicate} ->
         signal.send_message(sender_uuid, "That one's already on the list.")
@@ -363,6 +367,8 @@ defmodule YonderbookClubs.Bot.Router do
   defp resolve_club(_sender_uuid, club_number \\ nil) do
     case YonderbookClubs.Signal.impl().list_groups() do
       {:ok, groups} when groups != [] ->
+        Logger.info("RESOLVE_CLUB list_groups returned IDs: #{inspect(Enum.map(groups, & &1["id"]))}")
+
         clubs =
           groups
           |> Enum.map(fn group ->

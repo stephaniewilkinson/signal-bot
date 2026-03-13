@@ -165,9 +165,17 @@ defmodule YonderbookClubs.Books do
     end
   end
 
-  defp extract_description(desc) when is_binary(desc), do: desc
-  defp extract_description(%{"value" => value}) when is_binary(value), do: value
+  defp extract_description(desc) when is_binary(desc), do: if(english?(desc), do: desc)
+  defp extract_description(%{"value" => value}) when is_binary(value), do: if(english?(value), do: value)
   defp extract_description(_), do: nil
+
+  # Simple heuristic: English text is mostly ASCII. If more than 10% of characters
+  # are non-ASCII, it's likely not English.
+  defp english?(text) do
+    chars = String.to_charlist(text)
+    ascii_count = Enum.count(chars, &(&1 < 128))
+    ascii_count / max(length(chars), 1) >= 0.9
+  end
 
   defp fetch_author_from_edition(edition) do
     author_key =
