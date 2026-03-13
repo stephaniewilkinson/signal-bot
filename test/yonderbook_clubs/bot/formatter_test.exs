@@ -47,8 +47,8 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       assert result =~ "pick up to 3"
     end
 
-    test "truncates descriptions longer than 200 characters" do
-      long_description = String.duplicate("a", 250)
+    test "truncates descriptions longer than 500 characters" do
+      long_description = String.duplicate("a", 550)
       suggestions = [build_suggestion(%{description: long_description})]
       result = Formatter.format_blurbs(suggestions, 1)
 

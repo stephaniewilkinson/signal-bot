@@ -47,7 +47,11 @@ defmodule YonderbookClubs.Bot.Router do
         handle_start_vote(group_id, n)
 
       "start vote" ->
-        handle_start_vote(group_id, 1)
+        YonderbookClubs.Signal.impl().send_message(
+          group_id,
+          "How many books should win? Reply \"/start vote 1\" or \"/start vote 2\", etc."
+        )
+        :ok
 
       "close vote" ->
         handle_close_vote(group_id)

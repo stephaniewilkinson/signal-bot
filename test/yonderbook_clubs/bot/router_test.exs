@@ -75,12 +75,21 @@ defmodule YonderbookClubs.Bot.RouterTest do
         :ok
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "start vote"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "start vote 1"))
 
       assert Suggestions.list_suggestions(club) == []
 
       updated_club = Clubs.get_club_by_group_id("group.abc123")
       assert updated_club.voting_active == true
+    end
+
+    test "start vote without number prompts for vote budget" do
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "How many books"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "start vote"))
     end
 
     test "start vote N parses vote budget" do
@@ -111,7 +120,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert {:error, :no_suggestions} =
-               Router.handle_message(group_message("group.abc123", "start vote"))
+               Router.handle_message(group_message("group.abc123", "start vote 1"))
 
       updated_club = Clubs.get_club_by_group_id("group.abc123")
       assert updated_club.voting_active == false
@@ -127,7 +136,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert {:error, :already_voting} =
-               Router.handle_message(group_message("group.abc123", "start vote"))
+               Router.handle_message(group_message("group.abc123", "start vote 1"))
     end
 
     test "start vote is case insensitive" do
@@ -141,7 +150,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         :ok
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "START VOTE"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "START VOTE 1"))
     end
   end
 
