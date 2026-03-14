@@ -390,7 +390,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       assert :ok = Router.handle_poll_vote(vote_msg)
 
-      results = YonderbookClubs.Polls.get_results(poll)
+      results = YonderbookClubs.Polls.get_combined_results([poll])
       {_piranesi, count} = Enum.find(results, fn {s, _} -> s.title == "Piranesi" end)
       assert count == 1
     end

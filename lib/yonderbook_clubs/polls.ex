@@ -97,28 +97,28 @@ defmodule YonderbookClubs.Polls do
   end
 
   def get_combined_results(polls) do
-    polls
-    |> Enum.flat_map(&get_results/1)
-    |> Enum.sort_by(fn {_suggestion, count} -> count end, :desc)
-  end
+    poll_ids = Enum.map(polls, & &1.id)
 
-  def get_results(poll) do
     options =
       PollOption
-      |> where(poll_id: ^poll.id)
+      |> where([o], o.poll_id in ^poll_ids)
       |> preload(:suggestion)
       |> order_by(asc: :option_index)
       |> Repo.all()
 
     votes =
       Vote
-      |> where(poll_id: ^poll.id)
+      |> where([v], v.poll_id in ^poll_ids)
       |> Repo.all()
+
+    votes_by_poll = Enum.group_by(votes, & &1.poll_id)
 
     options
     |> Enum.map(fn option ->
+      poll_votes = Map.get(votes_by_poll, option.poll_id, [])
+
       count =
-        Enum.count(votes, fn vote ->
+        Enum.count(poll_votes, fn vote ->
           option.option_index in vote.option_indexes
         end)
 

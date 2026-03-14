@@ -64,8 +64,17 @@ defmodule YonderbookClubs.Bot.Router do
   defp handle_group_message(group_id, text) do
     case text |> strip_slash() |> String.downcase() do
       "start vote " <> rest ->
-        n = parse_vote_budget(rest)
-        handle_start_vote(group_id, n)
+        case parse_vote_budget(rest) do
+          {:ok, n} ->
+            handle_start_vote(group_id, n)
+
+          {:error, _} ->
+            YonderbookClubs.Signal.impl().send_message(
+              group_id,
+              "Pick a number between 1 and 50, like \"/start vote 2\"."
+            )
+            :ok
+        end
 
       "start vote" ->
         YonderbookClubs.Signal.impl().send_message(
@@ -87,8 +96,9 @@ defmodule YonderbookClubs.Bot.Router do
 
   defp parse_vote_budget(text) do
     case Integer.parse(String.trim(text)) do
-      {n, ""} when n > 0 and n <= 50 -> n
-      _ -> 1
+      {n, ""} when n > 0 and n <= 50 -> {:ok, n}
+      {_, ""} -> {:error, :out_of_range}
+      _ -> {:error, :invalid}
     end
   end
 
@@ -132,7 +142,7 @@ defmodule YonderbookClubs.Bot.Router do
             options = Formatter.format_poll_options(chunk)
 
             case signal.send_poll(group_id, question, options) do
-              {:ok, poll_timestamp} ->
+              {:ok, poll_timestamp} when is_integer(poll_timestamp) ->
                 {:ok, poll} = Polls.create_poll(club, poll_timestamp, vote_budget, chunk)
                 {:cont, {:ok, [poll | created_polls]}}
 
@@ -226,10 +236,9 @@ defmodule YonderbookClubs.Bot.Router do
             signal.send_message(group_id, "No polls yet. Start one with /start vote.")
             :ok
 
-          polls ->
-            status = hd(polls).status
+          [first | _] = polls ->
             results = Polls.get_combined_results(polls)
-            signal.send_message(group_id, Formatter.format_results(results, status))
+            signal.send_message(group_id, Formatter.format_results(results, first.status))
             :ok
         end
     end
