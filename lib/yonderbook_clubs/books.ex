@@ -314,7 +314,7 @@ defmodule YonderbookClubs.Books do
     case String.length(digits) do
       10 -> isbn10_to_isbn13(digits)
       13 -> digits
-      _ -> digits
+      _ -> nil
     end
   end
 

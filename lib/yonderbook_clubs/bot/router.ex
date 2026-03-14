@@ -413,6 +413,13 @@ defmodule YonderbookClubs.Bot.Router do
         [_, author, title] = Regex.run(@author_comma_title_regex, text)
         handle_title_author_suggestion(sender_uuid, sender_name, club, String.trim(title), String.trim(author))
 
+      text == "" ->
+        YonderbookClubs.Signal.impl().send_message(
+          sender_uuid,
+          "Suggest what? Try: /suggest Piranesi by Susanna Clarke"
+        )
+        :ok
+
       true ->
         handle_freetext_suggestion(sender_uuid, sender_name, club, text)
     end
