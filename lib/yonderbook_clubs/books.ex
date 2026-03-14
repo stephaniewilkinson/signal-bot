@@ -11,39 +11,53 @@ defmodule YonderbookClubs.Books do
   @anthropic_base "https://api.anthropic.com/v1/messages"
   @http_timeout_ms 15_000
 
+  @type book_data :: %{
+          title: String.t() | nil,
+          author: String.t() | nil,
+          isbn: String.t() | nil,
+          open_library_work_id: String.t() | nil,
+          cover_url: String.t() | nil,
+          description: String.t() | nil
+        }
+
   @doc """
   Searches Open Library by title and author.
 
   Returns `{:ok, book_map}` with title, author, isbn, open_library_work_id,
   cover_url, and description. Returns `{:error, :not_found}` if no results.
   """
+  @spec search(String.t(), String.t()) :: {:ok, book_data()} | {:error, :not_found}
   def search(title, author) do
-    url = "#{@open_library_base}/search.json"
+    timed(:search, %{type: :title_author}, fn ->
+      url = "#{@open_library_base}/search.json"
 
-    # Try exact title+author first, fall back to general query
-    case Req.get(url, params: [title: title, author: author, language: "eng", limit: 1], receive_timeout: @http_timeout_ms) do
-      {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
-        build_from_search_result(first)
+      case Req.get(url, params: [title: title, author: author, language: "eng", limit: 1], receive_timeout: @http_timeout_ms) do
+        {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
+          build_from_search_result(first)
 
-      _ ->
-        search_general("#{title} #{author}")
-    end
+        _ ->
+          search_general("#{title} #{author}")
+      end
+    end)
   end
 
   @doc """
   General free-text search on Open Library. Used as a fallback when no
   structured pattern (title by author, ISBN, etc.) matches the input.
   """
+  @spec search_general(String.t()) :: {:ok, book_data()} | {:error, :not_found}
   def search_general(query) do
-    url = "#{@open_library_base}/search.json"
+    timed(:search, %{type: :general}, fn ->
+      url = "#{@open_library_base}/search.json"
 
-    case Req.get(url, params: [q: query, language: "eng", limit: 1], receive_timeout: @http_timeout_ms) do
-      {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
-        build_from_search_result(first)
+      case Req.get(url, params: [q: query, language: "eng", limit: 1], receive_timeout: @http_timeout_ms) do
+        {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
+          build_from_search_result(first)
 
-      _ ->
-        {:error, :not_found}
-    end
+        _ ->
+          {:error, :not_found}
+      end
+    end)
   end
 
   @doc """
@@ -52,19 +66,21 @@ defmodule YonderbookClubs.Books do
   Strips hyphens from input, fetches the edition record, then resolves the
   work and author details. Returns the same shape as `search/2`.
   """
+  @spec search_isbn(String.t()) :: {:ok, book_data()} | {:error, :not_found}
   def search_isbn(isbn) do
-    clean = String.replace(isbn, "-", "")
-    # Normalize to ISBN-13 for the lookup — Open Library handles ISBN-13 more reliably
-    lookup_isbn = normalize_isbn(clean)
-    url = "#{@open_library_base}/isbn/#{lookup_isbn}.json"
+    timed(:search, %{type: :isbn}, fn ->
+      clean = String.replace(isbn, "-", "")
+      lookup_isbn = normalize_isbn(clean)
+      url = "#{@open_library_base}/isbn/#{lookup_isbn}.json"
 
-    case Req.get(url, receive_timeout: @http_timeout_ms) do
-      {:ok, %{status: 200, body: body}} when is_map(body) ->
-        build_from_edition(body, clean)
+      case Req.get(url, receive_timeout: @http_timeout_ms) do
+        {:ok, %{status: 200, body: body}} when is_map(body) ->
+          build_from_edition(body, clean)
 
-      _error ->
-        {:error, :not_found}
-    end
+        _error ->
+          {:error, :not_found}
+      end
+    end)
   end
 
   @doc """
@@ -74,6 +90,7 @@ defmodule YonderbookClubs.Books do
   Requires `:anthropic_api_key` to be configured. Returns `{:error, :ai_not_configured}`
   if the key is missing, `{:error, :unrecognized}` if Claude cannot identify a book.
   """
+  @spec search_ai(String.t()) :: {:ok, book_data()} | {:error, atom()}
   def search_ai(text) do
     case Application.get_env(:yonderbook_clubs, :anthropic_api_key) do
       nil ->
@@ -306,6 +323,7 @@ defmodule YonderbookClubs.Books do
   # --- ISBN helpers ---
 
   @doc false
+  @spec normalize_isbn(String.t() | nil) :: String.t() | nil
   def normalize_isbn(nil), do: nil
 
   def normalize_isbn(isbn) do
@@ -351,4 +369,17 @@ defmodule YonderbookClubs.Books do
 
   defp cover_url(nil), do: nil
   defp cover_url(cover_id), do: "#{@covers_base}/#{cover_id}-M.jpg"
+
+  defp timed(event, metadata, fun) do
+    start_time = System.monotonic_time()
+    result = fun.()
+
+    :telemetry.execute(
+      [:yonderbook_clubs, :books, event],
+      %{duration: System.monotonic_time() - start_time},
+      Map.put(metadata, :result, elem(result, 0))
+    )
+
+    result
+  end
 end

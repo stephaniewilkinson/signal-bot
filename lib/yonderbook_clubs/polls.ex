@@ -5,36 +5,44 @@ defmodule YonderbookClubs.Polls do
 
   import Ecto.Query
 
+  alias YonderbookClubs.Clubs.Club
   alias YonderbookClubs.Repo
   alias YonderbookClubs.Polls.{Poll, PollOption, Vote}
+  alias YonderbookClubs.Suggestions.Suggestion
 
+  @spec create_poll(Club.t(), integer(), integer(), [Suggestion.t()]) :: {:ok, Poll.t()} | {:error, term()}
   def create_poll(club, signal_timestamp, vote_budget, suggestions) do
-    Repo.transaction(fn ->
-      {:ok, poll} =
-        %Poll{}
-        |> Poll.changeset(%{
-          club_id: club.id,
-          signal_timestamp: signal_timestamp,
-          vote_budget: vote_budget
-        })
-        |> Repo.insert()
+    multi =
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:poll, Poll.changeset(%Poll{}, %{
+        club_id: club.id,
+        signal_timestamp: signal_timestamp,
+        vote_budget: vote_budget
+      }))
+      |> Ecto.Multi.run(:poll_options, fn repo, %{poll: poll} ->
+        options =
+          suggestions
+          |> Enum.with_index()
+          |> Enum.map(fn {suggestion, index} ->
+            %PollOption{}
+            |> PollOption.changeset(%{
+              poll_id: poll.id,
+              option_index: index,
+              suggestion_id: suggestion.id
+            })
+            |> repo.insert!()
+          end)
 
-      suggestions
-      |> Enum.with_index()
-      |> Enum.each(fn {suggestion, index} ->
-        %PollOption{}
-        |> PollOption.changeset(%{
-          poll_id: poll.id,
-          option_index: index,
-          suggestion_id: suggestion.id
-        })
-        |> Repo.insert!()
+        {:ok, options}
       end)
 
-      poll
-    end)
+    case Repo.transaction(multi) do
+      {:ok, %{poll: poll}} -> {:ok, poll}
+      {:error, _step, changeset, _changes} -> {:error, changeset}
+    end
   end
 
+  @spec get_poll_by_timestamp(integer()) :: Poll.t() | nil
   def get_poll_by_timestamp(signal_timestamp) do
     Poll
     |> where(signal_timestamp: ^signal_timestamp)
@@ -49,6 +57,7 @@ defmodule YonderbookClubs.Polls do
     |> Repo.one()
   end
 
+  @spec get_latest_polls(Club.t()) :: [Poll.t()]
   def get_latest_polls(club) do
     case get_latest_poll(club) do
       nil ->
@@ -63,6 +72,7 @@ defmodule YonderbookClubs.Polls do
     end
   end
 
+  @spec get_latest_active_polls(Club.t()) :: [Poll.t()]
   def get_latest_active_polls(club) do
     Poll
     |> where(club_id: ^club.id, status: :active)
@@ -70,6 +80,7 @@ defmodule YonderbookClubs.Polls do
     |> Repo.all()
   end
 
+  @spec record_vote(Poll.t(), String.t(), [integer()], integer()) :: {:ok, Vote.t()} | {:error, Ecto.Changeset.t()}
   def record_vote(poll, signal_sender_uuid, option_indexes, vote_count) do
     attrs = %{
       poll_id: poll.id,
@@ -86,16 +97,19 @@ defmodule YonderbookClubs.Polls do
     )
   end
 
+  @spec close_poll(Poll.t()) :: {:ok, Poll.t()} | {:error, Ecto.Changeset.t()}
   def close_poll(poll) do
     poll
     |> Poll.changeset(%{status: :closed})
     |> Repo.update()
   end
 
+  @spec delete_poll(Poll.t()) :: {:ok, Poll.t()} | {:error, Ecto.Changeset.t()}
   def delete_poll(poll) do
     Repo.delete(poll)
   end
 
+  @spec get_combined_results([Poll.t()]) :: [{Suggestion.t(), non_neg_integer()}]
   def get_combined_results(polls) do
     poll_ids = Enum.map(polls, & &1.id)
 

@@ -4,10 +4,12 @@ defmodule YonderbookClubs.Application do
   @impl true
   def start(_type, _args) do
     Logger.add_handlers(:yonderbook_clubs)
+    YonderbookClubs.Telemetry.attach()
 
     children =
       [
         YonderbookClubs.Repo,
+        YonderbookClubs.Clubs.Cache,
         {Task.Supervisor, name: YonderbookClubs.TaskSupervisor}
       ] ++ signal_children()
 

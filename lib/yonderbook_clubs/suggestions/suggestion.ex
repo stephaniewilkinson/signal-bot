@@ -2,6 +2,22 @@ defmodule YonderbookClubs.Suggestions.Suggestion do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t(),
+          title: String.t(),
+          author: String.t(),
+          isbn: String.t() | nil,
+          open_library_work_id: String.t(),
+          cover_url: String.t() | nil,
+          description: String.t() | nil,
+          signal_sender_uuid: String.t(),
+          signal_sender_name: String.t() | nil,
+          status: :active | :archived,
+          club_id: Ecto.UUID.t(),
+          inserted_at: DateTime.t(),
+          updated_at: DateTime.t()
+        }
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 

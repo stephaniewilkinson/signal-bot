@@ -15,6 +15,7 @@ defmodule YonderbookClubs.Signal do
               {:ok, integer()} | {:error, term()}
   @callback list_groups() :: {:ok, [map()]} | {:error, term()}
 
+  @spec impl() :: module()
   def impl do
     Application.get_env(:yonderbook_clubs, :signal_impl, YonderbookClubs.Signal.CLI)
   end

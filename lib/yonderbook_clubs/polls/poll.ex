@@ -2,6 +2,16 @@ defmodule YonderbookClubs.Polls.Poll do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t(),
+          signal_timestamp: integer(),
+          vote_budget: integer(),
+          status: :active | :closed,
+          club_id: Ecto.UUID.t(),
+          inserted_at: DateTime.t(),
+          updated_at: DateTime.t()
+        }
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 

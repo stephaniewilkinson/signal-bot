@@ -5,6 +5,7 @@ defmodule YonderbookClubs.Suggestions do
 
   import Ecto.Query
 
+  alias YonderbookClubs.Clubs.Club
   alias YonderbookClubs.Repo
   alias YonderbookClubs.Suggestions.Suggestion
 
@@ -15,6 +16,7 @@ defmodule YonderbookClubs.Suggestions do
   If a duplicate is found, returns `{:ok, :duplicate}`.
   Otherwise inserts and returns `{:ok, suggestion}` or `{:error, changeset}`.
   """
+  @spec create_suggestion(Club.t(), map()) :: {:ok, Suggestion.t()} | {:ok, :duplicate} | {:error, Ecto.Changeset.t()}
   def create_suggestion(club, attrs) do
     attrs = Map.put(attrs, :club_id, club.id)
 
@@ -54,6 +56,7 @@ defmodule YonderbookClubs.Suggestions do
   @doc """
   Returns all suggestions for a club, ordered by inserted_at ascending.
   """
+  @spec list_suggestions(Club.t()) :: [Suggestion.t()]
   def list_suggestions(club) do
     Suggestion
     |> where(club_id: ^club.id, status: :active)
@@ -66,6 +69,7 @@ defmodule YonderbookClubs.Suggestions do
 
   Returns `{:ok, suggestion}` if deleted, `{:error, :not_found}` if none exist.
   """
+  @spec remove_latest_suggestion(Ecto.UUID.t(), String.t()) :: {:ok, Suggestion.t()} | {:error, :not_found}
   def remove_latest_suggestion(club_id, signal_sender_uuid) do
     query =
       Suggestion
@@ -82,6 +86,7 @@ defmodule YonderbookClubs.Suggestions do
   @doc """
   Archives all active suggestions for a club. Returns `{count, nil}`.
   """
+  @spec archive_all_suggestions(Club.t()) :: {non_neg_integer(), nil}
   def archive_all_suggestions(club) do
     Suggestion
     |> where(club_id: ^club.id, status: :active)

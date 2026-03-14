@@ -2,6 +2,15 @@ defmodule YonderbookClubs.Clubs.Club do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t(),
+          signal_group_id: String.t(),
+          name: String.t(),
+          voting_active: boolean(),
+          inserted_at: DateTime.t(),
+          updated_at: DateTime.t()
+        }
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 

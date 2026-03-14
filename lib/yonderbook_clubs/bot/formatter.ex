@@ -5,8 +5,12 @@ defmodule YonderbookClubs.Bot.Formatter do
   Pure functions that take data and return formatted strings. No side effects.
   """
 
+  alias YonderbookClubs.Clubs.Club
+  alias YonderbookClubs.Suggestions.Suggestion
+
   @max_description_length 400
 
+  @spec format_blurbs([Suggestion.t()], pos_integer(), pos_integer()) :: String.t()
   def format_blurbs(suggestions, vote_budget, total_polls \\ 1) do
     n = length(suggestions)
     header = "#{n} books — pick up to #{vote_budget}:\n"
@@ -52,6 +56,7 @@ defmodule YonderbookClubs.Bot.Formatter do
     end
   end
 
+  @spec format_poll_question(pos_integer(), pos_integer(), pos_integer()) :: String.t()
   def format_poll_question(vote_budget, poll_num \\ 1, total_polls \\ 1) do
     base =
       case vote_budget do
@@ -66,10 +71,12 @@ defmodule YonderbookClubs.Bot.Formatter do
     end
   end
 
+  @spec format_poll_options([Suggestion.t()]) :: [String.t()]
   def format_poll_options(suggestions) do
     Enum.map(suggestions, & &1.title)
   end
 
+  @spec format_help() :: String.t()
   def format_help do
     """
     Suggest a book (DM):
@@ -89,6 +96,7 @@ defmodule YonderbookClubs.Bot.Formatter do
     """
   end
 
+  @spec format_confirmation(Suggestion.t(), String.t()) :: String.t()
   def format_confirmation(suggestion, club_name) do
     blurb =
       case suggestion.description do
@@ -100,6 +108,7 @@ defmodule YonderbookClubs.Bot.Formatter do
     "Added #{suggestion.title} by #{suggestion.author} to the list of suggestions for #{club_name}.#{blurb}\n\nSay /remove to undo."
   end
 
+  @spec format_suggestions_list([Suggestion.t()]) :: String.t()
   def format_suggestions_list([]) do
     "No suggestions yet. DM me /suggest to add one."
   end
@@ -117,6 +126,7 @@ defmodule YonderbookClubs.Bot.Formatter do
     "Current suggestions:\n\n" <> lines
   end
 
+  @spec format_results([{Suggestion.t(), non_neg_integer()}], :active | :closed) :: String.t()
   def format_results(results, status) do
     header = if status == :active, do: "Live results:", else: "Final results:"
 
@@ -132,6 +142,7 @@ defmodule YonderbookClubs.Bot.Formatter do
     header <> "\n\n" <> lines
   end
 
+  @spec format_club_list([Club.t()]) :: String.t()
   def format_club_list(clubs) do
     lines =
       clubs

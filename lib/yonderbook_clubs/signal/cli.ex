@@ -356,7 +356,16 @@ defmodule YonderbookClubs.Signal.CLI do
   end
 
   defp call_rpc(method, params) do
-    GenServer.call(__MODULE__, {:rpc, method, params}, @rpc_timeout_ms)
+    start_time = System.monotonic_time()
+    result = GenServer.call(__MODULE__, {:rpc, method, params}, @rpc_timeout_ms)
+
+    :telemetry.execute(
+      [:yonderbook_clubs, :signal, :rpc],
+      %{duration: System.monotonic_time() - start_time},
+      %{method: method, result: elem(result, 0)}
+    )
+
+    result
   end
 
   defp bot_number do
