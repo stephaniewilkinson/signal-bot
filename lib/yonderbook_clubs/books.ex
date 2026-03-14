@@ -20,7 +20,7 @@ defmodule YonderbookClubs.Books do
     url = "#{@open_library_base}/search.json"
 
     # Try exact title+author first, fall back to general query
-    case Req.get(url, params: [title: title, author: author, limit: 1]) do
+    case Req.get(url, params: [title: title, author: author, language: "eng", limit: 1]) do
       {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
         build_from_search_result(first)
 
@@ -36,7 +36,7 @@ defmodule YonderbookClubs.Books do
   def search_general(query) do
     url = "#{@open_library_base}/search.json"
 
-    case Req.get(url, params: [q: query, limit: 1]) do
+    case Req.get(url, params: [q: query, language: "eng", limit: 1]) do
       {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
         build_from_search_result(first)
 
