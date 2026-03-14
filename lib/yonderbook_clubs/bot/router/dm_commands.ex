@@ -40,67 +40,31 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
   end
 
   defp handle_remove(sender_uuid) do
-    signal = YonderbookClubs.Signal.impl()
+    with_club(sender_uuid, fn club ->
+      signal = YonderbookClubs.Signal.impl()
 
-    case resolve_club(sender_uuid) do
-      {:ok, club} ->
-        case Suggestions.remove_latest_suggestion(club.id, sender_uuid) do
-          {:ok, suggestion} ->
-            signal.send_message(
-              sender_uuid,
-              "Removed #{suggestion.title} by #{suggestion.author}."
-            )
+      case Suggestions.remove_latest_suggestion(club.id, sender_uuid) do
+        {:ok, suggestion} ->
+          signal.send_message(
+            sender_uuid,
+            "Removed #{suggestion.title} by #{suggestion.author}."
+          )
 
-            :ok
+          :ok
 
-          {:error, :not_found} ->
-            signal.send_message(sender_uuid, "You don't have any suggestions to remove.")
-            :ok
-        end
-
-      {:error, :no_clubs} ->
-        signal.send_message(
-          sender_uuid,
-          "I'm not in any of your group chats yet. Add me to a group first."
-        )
-
-        :ok
-
-      {:error, :signal_unavailable} ->
-        signal.send_message(
-          sender_uuid,
-          "Something went wrong. Try again in a minute."
-        )
-
-        :ok
-
-      {:error, :multiple_clubs, clubs} ->
-        signal.send_message(sender_uuid, Formatter.format_club_list(clubs))
-        :ok
-    end
+        {:error, :not_found} ->
+          signal.send_message(sender_uuid, "You don't have any suggestions to remove.")
+          :ok
+      end
+    end)
   end
 
   defp handle_suggestions(sender_uuid) do
-    signal = YonderbookClubs.Signal.impl()
-
-    case resolve_club(sender_uuid) do
-      {:ok, club} ->
-        suggestions = Suggestions.list_suggestions(club)
-        signal.send_message(sender_uuid, Formatter.format_suggestions_list(suggestions))
-        :ok
-
-      {:error, :no_clubs} ->
-        signal.send_message(sender_uuid, "I'm not in any of your group chats yet. Add me to a group first.")
-        :ok
-
-      {:error, :signal_unavailable} ->
-        signal.send_message(sender_uuid, "Something went wrong. Try again in a minute.")
-        :ok
-
-      {:error, :multiple_clubs, clubs} ->
-        signal.send_message(sender_uuid, Formatter.format_club_list(clubs))
-        :ok
-    end
+    with_club(sender_uuid, fn club ->
+      suggestions = Suggestions.list_suggestions(club)
+      YonderbookClubs.Signal.impl().send_message(sender_uuid, Formatter.format_suggestions_list(suggestions))
+      :ok
+    end)
   end
 
   defp handle_suggest(sender_uuid, sender_name, text) do
@@ -110,42 +74,9 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
     # Check for #N club prefix
     {club_number, suggestion_text} = extract_club_prefix(suggestion_text)
 
-    case resolve_club(sender_uuid, club_number) do
-      {:ok, club} ->
-        process_suggestion(sender_uuid, sender_name, club, suggestion_text)
-
-      {:error, :no_clubs} ->
-        YonderbookClubs.Signal.impl().send_message(
-          sender_uuid,
-          "I'm not in any of your group chats yet. Add me to a group first."
-        )
-
-        :ok
-
-      {:error, :signal_unavailable} ->
-        YonderbookClubs.Signal.impl().send_message(
-          sender_uuid,
-          "Something went wrong. Try again in a minute."
-        )
-
-        :ok
-
-      {:error, :multiple_clubs, clubs} ->
-        YonderbookClubs.Signal.impl().send_message(
-          sender_uuid,
-          Formatter.format_club_list(clubs)
-        )
-
-        :ok
-
-      {:error, :invalid_club_number} ->
-        YonderbookClubs.Signal.impl().send_message(
-          sender_uuid,
-          "That club number doesn't exist. Say \"suggest\" to see the list."
-        )
-
-        :ok
-    end
+    with_club(sender_uuid, club_number, fn club ->
+      process_suggestion(sender_uuid, sender_name, club, suggestion_text)
+    end)
   end
 
   defp extract_club_prefix(text) do
@@ -208,7 +139,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
   defp isbn?(text) do
     stripped = String.replace(text, "-", "")
-    Regex.match?(~r/^\d+$/, stripped) and String.length(stripped) in [10, 13]
+    Regex.match?(~r/^(\d{10}|\d{9}X|\d{13})$/i, stripped)
   end
 
   defp handle_ai_suggestion(sender_uuid, sender_name, club, text) do
@@ -291,7 +222,34 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
   # --- Club Resolution ---
 
-  defp resolve_club(_sender_uuid, club_number \\ nil) do
+  defp with_club(sender_uuid, fun), do: with_club(sender_uuid, nil, fun)
+
+  defp with_club(sender_uuid, club_number, fun) do
+    signal = YonderbookClubs.Signal.impl()
+
+    case resolve_club(sender_uuid, club_number) do
+      {:ok, club} ->
+        fun.(club)
+
+      {:error, :no_clubs} ->
+        signal.send_message(sender_uuid, "I'm not in any of your group chats yet. Add me to a group first.")
+        :ok
+
+      {:error, :signal_unavailable} ->
+        signal.send_message(sender_uuid, "Something went wrong. Try again in a minute.")
+        :ok
+
+      {:error, :multiple_clubs, clubs} ->
+        signal.send_message(sender_uuid, Formatter.format_club_list(clubs))
+        :ok
+
+      {:error, :invalid_club_number} ->
+        signal.send_message(sender_uuid, "That club number doesn't exist. Say \"suggest\" to see the list.")
+        :ok
+    end
+  end
+
+  defp resolve_club(_sender_uuid, club_number) do
     case YonderbookClubs.Signal.impl().list_groups() do
       {:ok, groups} when groups != [] ->
         clubs =

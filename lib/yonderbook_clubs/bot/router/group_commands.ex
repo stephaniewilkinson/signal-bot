@@ -59,11 +59,20 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
     signal = YonderbookClubs.Signal.impl()
 
     with {:ok, club} <- get_or_create_club_for_group(group_id),
-         :ok <- check_not_already_voting(club, group_id),
-         {:ok, suggestions} <- get_suggestions_for_vote(club, group_id),
-         :ok <- check_enough_suggestions(suggestions, signal, group_id) do
-      {:ok, club} = Clubs.set_voting_active(club, true)
-      send_vote(signal, group_id, club, suggestions, vote_budget)
+         {:ok, club} <- activate_voting(club, group_id) do
+      case get_suggestions_for_vote(club, group_id) do
+        {:ok, suggestions} ->
+          case check_enough_suggestions(suggestions, signal, group_id) do
+            :ok -> send_vote(signal, group_id, club, suggestions, vote_budget)
+            error ->
+              Clubs.set_voting_active(club, false)
+              error
+          end
+
+        error ->
+          Clubs.set_voting_active(club, false)
+          error
+      end
     end
   end
 
@@ -96,8 +105,13 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
 
             case signal.send_poll(group_id, question, options) do
               {:ok, poll_timestamp} when is_integer(poll_timestamp) ->
-                {:ok, poll} = Polls.create_poll(club, poll_timestamp, vote_budget, chunk)
-                {:cont, {:ok, [poll | created_polls]}}
+                case Polls.create_poll(club, poll_timestamp, vote_budget, chunk) do
+                  {:ok, poll} ->
+                    {:cont, {:ok, [poll | created_polls]}}
+
+                  {:error, reason} ->
+                    {:halt, {:error, reason, created_polls}}
+                end
 
               {:error, reason} ->
                 {:halt, {:error, reason, created_polls}}
@@ -133,15 +147,17 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
     end
   end
 
-  defp check_not_already_voting(club, group_id) do
-    if club.voting_active do
-      YonderbookClubs.Signal.impl().send_message(
-        group_id,
-        "A vote is already open. Say \"close vote\" to end it."
-      )
-      {:error, :already_voting}
-    else
-      :ok
+  defp activate_voting(club, group_id) do
+    case Clubs.activate_voting(club) do
+      {:ok, club} ->
+        {:ok, club}
+
+      {:error, :already_voting} ->
+        YonderbookClubs.Signal.impl().send_message(
+          group_id,
+          "A vote is already open. Say \"close vote\" to end it."
+        )
+        {:error, :already_voting}
     end
   end
 
@@ -166,12 +182,17 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
         :noop
 
       club ->
-        Clubs.set_voting_active(club, false)
+        if club.voting_active do
+          Clubs.set_voting_active(club, false)
 
-        Polls.get_latest_active_polls(club)
-        |> Enum.each(&Polls.close_poll/1)
+          Polls.get_latest_active_polls(club)
+          |> Enum.each(&Polls.close_poll/1)
 
-        YonderbookClubs.Signal.impl().send_message(group_id, "Vote closed.")
+          YonderbookClubs.Signal.impl().send_message(group_id, "Vote closed.")
+        else
+          YonderbookClubs.Signal.impl().send_message(group_id, "No vote is active right now.")
+        end
+
         :ok
     end
   end

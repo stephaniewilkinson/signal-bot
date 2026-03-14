@@ -65,4 +65,30 @@ defmodule YonderbookClubs.Clubs do
 
     result
   end
+
+  @doc """
+  Atomically sets voting_active to true, but only if it's currently false.
+
+  Returns `{:ok, club}` if the transition succeeded, or `{:error, :already_voting}`
+  if another request already activated voting (prevents TOCTOU races).
+  """
+  @spec activate_voting(Club.t()) :: {:ok, Club.t()} | {:error, :already_voting}
+  def activate_voting(%Club{} = club) do
+    import Ecto.Query
+
+    {count, updated} =
+      Club
+      |> where(id: ^club.id, voting_active: false)
+      |> select([c], c)
+      |> Repo.update_all(set: [voting_active: true, updated_at: DateTime.utc_now()])
+
+    case {count, updated} do
+      {1, [updated_club]} ->
+        Cache.invalidate(club.signal_group_id)
+        {:ok, updated_club}
+
+      {0, _} ->
+        {:error, :already_voting}
+    end
+  end
 end

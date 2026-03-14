@@ -36,7 +36,7 @@ defmodule YonderbookClubs.Books do
           build_from_search_result(first)
 
         _ ->
-          search_general("#{title} #{author}")
+          do_general_search("#{title} #{author}")
       end
     end)
   end
@@ -48,16 +48,20 @@ defmodule YonderbookClubs.Books do
   @spec search_general(String.t()) :: {:ok, book_data()} | {:error, :not_found}
   def search_general(query) do
     timed(:search, %{type: :general}, fn ->
-      url = "#{@open_library_base}/search.json"
-
-      case Req.get(url, params: [q: query, language: "eng", limit: 1], receive_timeout: @http_timeout_ms) do
-        {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
-          build_from_search_result(first)
-
-        _ ->
-          {:error, :not_found}
-      end
+      do_general_search(query)
     end)
+  end
+
+  defp do_general_search(query) do
+    url = "#{@open_library_base}/search.json"
+
+    case Req.get(url, params: [q: query, language: "eng", limit: 1], receive_timeout: @http_timeout_ms) do
+      {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
+        build_from_search_result(first)
+
+      _ ->
+        {:error, :not_found}
+    end
   end
 
   @doc """

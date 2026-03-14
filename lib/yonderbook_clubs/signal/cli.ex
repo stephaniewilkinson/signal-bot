@@ -22,6 +22,7 @@ defmodule YonderbookClubs.Signal.CLI do
   @rpc_timeout_ms 30_000
   @connect_timeout_ms 10_000
   @max_buffer_bytes 10_000_000
+  @uuid_regex ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
   # --- Public API (behaviour callbacks) ---
 
@@ -374,7 +375,6 @@ defmodule YonderbookClubs.Signal.CLI do
 
   # UUIDs and phone numbers are DM recipients; everything else is a group ID (base64)
   defp dm_recipient?(recipient) do
-    String.starts_with?(recipient, "+") or
-      Regex.match?(~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, recipient)
+    String.starts_with?(recipient, "+") or Regex.match?(@uuid_regex, recipient)
   end
 end
