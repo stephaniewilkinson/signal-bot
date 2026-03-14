@@ -11,11 +11,12 @@ Send these as a direct message to the bot.
 | `/help` | Show available commands |
 | `/suggest Title by Author` | Suggest a book by title and author |
 | `/suggest Author, Title` | Suggest a book by author and title |
+| `/suggest Callie Hart Brimstone` | Suggest a book by free text (searches Open Library) |
 | `/suggest 978-1635575996` | Suggest a book by ISBN |
 | `/suggest ai: that infinite house book` | Suggest a book using AI to identify it from a loose description |
 | `/suggest #2 Title by Author` | Suggest a book for a specific club (when you're in multiple clubs) |
 | `/remove` | Remove your most recent suggestion |
-| `/suggestions` | List your active and archived suggestions |
+| `/suggestions` | See all current suggestions for the club |
 
 ## Group Commands
 

@@ -79,7 +79,7 @@ defmodule YonderbookClubs.Bot.Formatter do
     /suggest ai: that infinite house book
 
     /remove — undo your last suggestion
-    /suggestions — see your suggestions
+    /suggestions — see all suggestions for the club
     /help — this message
 
     In the group chat:
