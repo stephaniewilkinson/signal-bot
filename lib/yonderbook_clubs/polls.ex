@@ -92,6 +92,10 @@ defmodule YonderbookClubs.Polls do
     |> Repo.update()
   end
 
+  def delete_poll(poll) do
+    Repo.delete(poll)
+  end
+
   def get_combined_results(polls) do
     polls
     |> Enum.flat_map(&get_results/1)

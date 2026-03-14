@@ -21,10 +21,26 @@ defmodule YonderbookClubs.Suggestions do
     if duplicate?(club.id, attrs[:open_library_work_id]) do
       {:ok, :duplicate}
     else
-      %Suggestion{}
-      |> Suggestion.changeset(attrs)
-      |> Repo.insert()
+      case %Suggestion{}
+           |> Suggestion.changeset(attrs)
+           |> Repo.insert() do
+        {:ok, suggestion} ->
+          {:ok, suggestion}
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          if unique_violation?(changeset) do
+            {:ok, :duplicate}
+          else
+            {:error, changeset}
+          end
+      end
     end
+  end
+
+  defp unique_violation?(%Ecto.Changeset{errors: errors}) do
+    Enum.any?(errors, fn {_field, {_msg, opts}} ->
+      opts[:constraint] == :unique
+    end)
   end
 
   defp duplicate?(_club_id, nil), do: false

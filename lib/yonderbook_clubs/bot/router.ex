@@ -89,7 +89,7 @@ defmodule YonderbookClubs.Bot.Router do
 
   defp parse_vote_budget(text) do
     case Integer.parse(String.trim(text)) do
-      {n, ""} when n > 0 -> n
+      {n, ""} when n > 0 and n <= 50 -> n
       _ -> 1
     end
   end
@@ -128,28 +128,29 @@ defmodule YonderbookClubs.Bot.Router do
         result =
           chunks
           |> Enum.with_index(1)
-          |> Enum.reduce_while(:ok, fn {chunk, poll_num}, _acc ->
+          |> Enum.reduce_while({:ok, []}, fn {chunk, poll_num}, {:ok, created_polls} ->
             question = Formatter.format_poll_question(vote_budget, poll_num, total_polls)
             options = Formatter.format_poll_options(chunk)
 
             case signal.send_poll(group_id, question, options) do
               {:ok, poll_timestamp} ->
-                Polls.create_poll(club, poll_timestamp, vote_budget, chunk)
-                {:cont, :ok}
+                {:ok, poll} = Polls.create_poll(club, poll_timestamp, vote_budget, chunk)
+                {:cont, {:ok, [poll | created_polls]}}
 
               {:error, reason} ->
-                {:halt, {:error, reason}}
+                {:halt, {:error, reason, created_polls}}
             end
           end)
 
         case result do
-          :ok ->
+          {:ok, _polls} ->
             Suggestions.archive_all_suggestions(club)
             cleanup_covers(cover_paths)
             :ok
 
-          {:error, reason} ->
+          {:error, reason, created_polls} ->
             Logger.error("Failed to send poll to group #{group_id}: #{inspect(reason)}")
+            Enum.each(created_polls, &Polls.delete_poll/1)
             Clubs.set_voting_active(club, false)
             cleanup_covers(cover_paths)
             :ok
@@ -563,8 +564,13 @@ defmodule YonderbookClubs.Bot.Router do
       case Req.get(suggestion.cover_url) do
         {:ok, %{status: 200, body: body}} when is_binary(body) ->
           path = Path.join(System.tmp_dir!(), "cover_#{suggestion.id}.jpg")
-          File.write!(path, body)
-          [path]
+
+          case File.write(path, body) do
+            :ok -> [path]
+            {:error, reason} ->
+              Logger.warning("Failed to write cover for #{suggestion.title}: #{inspect(reason)}")
+              []
+          end
 
         _ ->
           Logger.warning("Failed to download cover for #{suggestion.title}")
@@ -574,6 +580,6 @@ defmodule YonderbookClubs.Bot.Router do
   end
 
   defp cleanup_covers(paths) do
-    Enum.each(paths, &File.rm/1)
+    Enum.each(paths, fn path -> File.rm(path) end)
   end
 end

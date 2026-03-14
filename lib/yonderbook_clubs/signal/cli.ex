@@ -19,6 +19,8 @@ defmodule YonderbookClubs.Signal.CLI do
 
   @max_backoff_ms 30_000
   @initial_backoff_ms 1_000
+  @rpc_timeout_ms 30_000
+  @connect_timeout_ms 10_000
 
   # --- Public API (behaviour callbacks) ---
 
@@ -190,6 +192,18 @@ defmodule YonderbookClubs.Signal.CLI do
   end
 
   @impl GenServer
+  def handle_info({:rpc_timeout, id}, state) do
+    case Map.pop(state.pending, id) do
+      {nil, _pending} ->
+        {:noreply, state}
+
+      {_from, pending} ->
+        Logger.warning("RPC request #{id} timed out, cleaning up")
+        {:noreply, %{state | pending: pending}}
+    end
+  end
+
+  @impl GenServer
   def handle_call({:rpc, _method, _params}, _from, %{socket: nil} = state) do
     # Not connected — fail fast
     {:reply, {:error, :not_connected}, state}
@@ -209,6 +223,7 @@ defmodule YonderbookClubs.Signal.CLI do
     case :gen_tcp.send(state.socket, payload <> "\n") do
       :ok ->
         pending = Map.put(state.pending, id, from)
+        Process.send_after(self(), {:rpc_timeout, id}, @rpc_timeout_ms + 5_000)
         {:noreply, %{state | request_id: id + 1, pending: pending}}
 
       {:error, reason} ->
@@ -221,7 +236,7 @@ defmodule YonderbookClubs.Signal.CLI do
   defp connect(state) do
     tcp_opts = [:binary, active: true, packet: :raw]
 
-    case :gen_tcp.connect(state.host, state.port, tcp_opts) do
+    case :gen_tcp.connect(state.host, state.port, tcp_opts, @connect_timeout_ms) do
       {:ok, socket} ->
         Logger.info("Connected to signal-cli at #{state.host}:#{state.port}")
         {:ok, %{state | socket: socket, buffer: "", backoff_ms: @initial_backoff_ms}}
@@ -279,12 +294,21 @@ defmodule YonderbookClubs.Signal.CLI do
     # Extract the envelope from the JSON-RPC notification and build a flat map
     # for the router. Only dispatch if there's a dataMessage (skip typing indicators, etc.)
     case envelope do
-      %{"dataMessage" => %{"pollVote" => poll_vote}} when is_map(poll_vote) ->
+      %{
+        "sourceUuid" => source_uuid,
+        "dataMessage" => %{
+          "pollVote" => %{
+            "targetSentTimestamp" => timestamp,
+            "voteCount" => vote_count
+          } = poll_vote
+        }
+      }
+      when is_binary(source_uuid) and is_integer(timestamp) and is_integer(vote_count) ->
         vote_msg = %{
-          "sourceUuid" => envelope["sourceUuid"],
-          "targetSentTimestamp" => poll_vote["targetSentTimestamp"],
+          "sourceUuid" => source_uuid,
+          "targetSentTimestamp" => timestamp,
           "optionIndexes" => poll_vote["optionIndexes"] || [],
-          "voteCount" => poll_vote["voteCount"]
+          "voteCount" => vote_count
         }
 
         Task.Supervisor.start_child(YonderbookClubs.TaskSupervisor, fn ->
@@ -328,7 +352,7 @@ defmodule YonderbookClubs.Signal.CLI do
   end
 
   defp call_rpc(method, params) do
-    GenServer.call(__MODULE__, {:rpc, method, params}, 15_000)
+    GenServer.call(__MODULE__, {:rpc, method, params}, @rpc_timeout_ms)
   end
 
   defp bot_number do
