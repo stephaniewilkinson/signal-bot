@@ -100,5 +100,21 @@ defmodule YonderbookClubs.BooksTest do
     test "returns nil for nil input" do
       assert Books.normalize_isbn(nil) == nil
     end
+
+    test "converts ISBN-10 with X check digit" do
+      # 030788743X is a valid ISBN-10 (The Great Gatsby)
+      result = Books.normalize_isbn("030788743X")
+
+      assert String.length(result) == 13
+      assert String.starts_with?(result, "978")
+      assert Regex.match?(~r/^\d{13}$/, result)
+    end
+
+    test "handles lowercase x in ISBN-10" do
+      result = Books.normalize_isbn("030788743x")
+
+      assert String.length(result) == 13
+      assert String.starts_with?(result, "978")
+    end
   end
 end

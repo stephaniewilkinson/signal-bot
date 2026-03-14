@@ -39,7 +39,12 @@ defmodule YonderbookClubs.Bot.Router do
   @spec handle_poll_vote(map()) :: :ok | :noop
   def handle_poll_vote(%{"targetSentTimestamp" => timestamp} = msg) do
     case Polls.get_poll_by_timestamp(timestamp) do
-      nil -> :noop
+      nil ->
+        :noop
+
+      %{status: :closed} ->
+        :noop
+
       poll ->
         Polls.record_vote(
           poll,

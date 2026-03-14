@@ -185,6 +185,24 @@ defmodule YonderbookClubs.Bot.RouterTest do
     end
   end
 
+  describe "group messages - start vote rollback" do
+    test "start vote with only one suggestion rolls back voting_active" do
+      club = create_club()
+      add_suggestion(club, "Piranesi", "Susanna Clarke")
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "only received one suggestion"
+        :ok
+      end)
+
+      assert {:error, :not_enough_suggestions} =
+               Router.handle_message(group_message("group.abc123", "start vote 1"))
+
+      updated_club = Clubs.get_club_by_group_id("group.abc123")
+      assert updated_club.voting_active == false
+    end
+  end
+
   describe "group messages - close vote" do
     test "close vote sets voting_active to false and confirms" do
       club = create_club()
@@ -199,6 +217,17 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       updated_club = Clubs.get_club_by_group_id("group.abc123")
       assert updated_club.voting_active == false
+    end
+
+    test "close vote when no vote is active tells the user" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "No vote is active"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "close vote"))
     end
   end
 
@@ -330,6 +359,29 @@ defmodule YonderbookClubs.Bot.RouterTest do
       assert length(Suggestions.list_suggestions(club)) == 13
     end
 
+    test "suggest with no text gives guidance" do
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Suggest what?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest"))
+    end
+
+    test "suggest with overly long text is rejected" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      long_text = String.duplicate("a", 501)
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "too long"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest #{long_text}"))
+    end
+
     test "suggest with free text that finds no results gives error" do
       _club = create_club()
 
@@ -399,6 +451,22 @@ defmodule YonderbookClubs.Bot.RouterTest do
       assert :noop = Router.handle_poll_vote(%{
         "sourceUuid" => "uuid-voter",
         "targetSentTimestamp" => 9999999999,
+        "optionIndexes" => [0],
+        "voteCount" => 1
+      })
+    end
+
+    test "handle_poll_vote ignores votes on closed polls" do
+      club = create_club()
+      s1 = add_suggestion(club, "Piranesi", "Susanna Clarke")
+      s2 = add_suggestion(club, "Babel", "RF Kuang")
+
+      {:ok, poll} = YonderbookClubs.Polls.create_poll(club, 5555555555, 1, [s1, s2])
+      {:ok, _closed} = YonderbookClubs.Polls.close_poll(poll)
+
+      assert :noop = Router.handle_poll_vote(%{
+        "sourceUuid" => "uuid-voter",
+        "targetSentTimestamp" => 5555555555,
         "optionIndexes" => [0],
         "voteCount" => 1
       })

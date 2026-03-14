@@ -120,26 +120,31 @@ defmodule YonderbookClubs.Books do
   defp build_from_search_result(doc) do
     work_key = doc["key"]
     work_id = extract_work_id(work_key)
-    cover_i = doc["cover_i"]
-    raw_isbn = doc["isbn"]
 
-    description = fetch_work_description(work_key)
+    if is_nil(work_id) do
+      {:error, :not_found}
+    else
+      cover_i = doc["cover_i"]
+      raw_isbn = doc["isbn"]
 
-    isbn =
-      case raw_isbn do
-        [first | _] -> normalize_isbn(first)
-        _ -> nil
-      end
+      description = fetch_work_description(work_key)
 
-    {:ok,
-     %{
-       title: doc["title"],
-       author: List.first(doc["author_name"] || []),
-       isbn: isbn,
-       open_library_work_id: work_id,
-       cover_url: cover_url(cover_i),
-       description: description
-     }}
+      isbn =
+        case raw_isbn do
+          [first | _] -> normalize_isbn(first)
+          _ -> nil
+        end
+
+      {:ok,
+       %{
+         title: doc["title"],
+         author: List.first(doc["author_name"] || []),
+         isbn: isbn,
+         open_library_work_id: work_id,
+         cover_url: cover_url(cover_i),
+         description: description
+       }}
+    end
   end
 
   defp build_from_edition(edition, input_isbn) do
@@ -150,33 +155,38 @@ defmodule YonderbookClubs.Books do
       end
 
     work_id = extract_work_id(work_key)
-    title = edition["title"]
-    description = fetch_work_description(work_key)
-    cover_i = List.first(edition["covers"] || [])
 
-    author_name = fetch_author_from_edition(edition) || fetch_author_from_work(work_key)
+    if is_nil(work_id) do
+      {:error, :not_found}
+    else
+      title = edition["title"]
+      description = fetch_work_description(work_key)
+      cover_i = List.first(edition["covers"] || [])
 
-    isbn =
-      case edition["isbn_13"] do
-        [first | _] ->
-          first
+      author_name = fetch_author_from_edition(edition) || fetch_author_from_work(work_key)
 
-        _ ->
-          case edition["isbn_10"] do
-            [first | _] -> normalize_isbn(first)
-            _ -> normalize_isbn(input_isbn)
-          end
-      end
+      isbn =
+        case edition["isbn_13"] do
+          [first | _] ->
+            first
 
-    {:ok,
-     %{
-       title: title,
-       author: author_name,
-       isbn: isbn,
-       open_library_work_id: work_id,
-       cover_url: cover_url(cover_i),
-       description: description
-     }}
+          _ ->
+            case edition["isbn_10"] do
+              [first | _] -> normalize_isbn(first)
+              _ -> normalize_isbn(input_isbn)
+            end
+        end
+
+      {:ok,
+       %{
+         title: title,
+         author: author_name,
+         isbn: isbn,
+         open_library_work_id: work_id,
+         cover_url: cover_url(cover_i),
+         description: description
+       }}
+    end
   end
 
   # --- Work / author fetching ---

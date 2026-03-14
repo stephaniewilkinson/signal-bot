@@ -13,6 +13,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
   @title_by_author_regex ~r/^(.+?)\s+by\s+(.+)$/i
   @author_comma_title_regex ~r/^(.+?),\s+(.+)$/
   @club_prefix_regex ~r/^#(\d+)\s+/
+  @max_input_length 500
 
   @spec handle(String.t(), String.t(), String.t()) :: :ok | :noop | {:error, atom()}
   def handle(sender_uuid, sender_name, text) do
@@ -32,6 +33,10 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
       "suggest " <> _ ->
         handle_suggest(sender_uuid, sender_name, stripped)
+
+      "suggest" ->
+        signal.send_message(sender_uuid, "Suggest what? Try: /suggest Piranesi by Susanna Clarke")
+        :ok
 
       _ ->
         signal.send_message(sender_uuid, "I didn't catch that. Say /help for help.")
@@ -93,6 +98,20 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
   defp process_suggestion(sender_uuid, sender_name, club, text) do
     cond do
+      text == "" ->
+        YonderbookClubs.Signal.impl().send_message(
+          sender_uuid,
+          "Suggest what? Try: /suggest Piranesi by Susanna Clarke"
+        )
+        :ok
+
+      String.length(text) > @max_input_length ->
+        YonderbookClubs.Signal.impl().send_message(
+          sender_uuid,
+          "That's too long. Try just the title and author."
+        )
+        :ok
+
       String.starts_with?(String.downcase(text), "ai:") ->
         ai_text = String.slice(text, 3..-1//1) |> String.trim()
         handle_ai_suggestion(sender_uuid, sender_name, club, ai_text)
@@ -108,13 +127,6 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       Regex.match?(@author_comma_title_regex, text) ->
         [_, author, title] = Regex.run(@author_comma_title_regex, text)
         handle_title_author_suggestion(sender_uuid, sender_name, club, String.trim(title), String.trim(author))
-
-      text == "" ->
-        YonderbookClubs.Signal.impl().send_message(
-          sender_uuid,
-          "Suggest what? Try: /suggest Piranesi by Susanna Clarke"
-        )
-        :ok
 
       true ->
         handle_freetext_suggestion(sender_uuid, sender_name, club, text)
