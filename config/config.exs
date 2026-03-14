@@ -13,7 +13,6 @@ config :logger, :console,
   metadata: [:request_id]
 
 config :sentry,
-  dsn: "https://993a30714786883d624863b727d5aa46@o4510085954666496.ingest.us.sentry.io/4511034997211136",
   environment_name: config_env(),
   enable_source_code_context: true,
   root_source_code_paths: [File.cwd!()]

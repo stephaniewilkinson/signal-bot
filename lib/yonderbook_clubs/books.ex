@@ -270,7 +270,6 @@ defmodule YonderbookClubs.Books do
 
     case Req.post(@anthropic_base, body: body, headers: headers) do
       {:ok, %{status: 200, body: %{"content" => [%{"text" => response_text} | _]}}} ->
-        Logger.info("AI extraction result: #{response_text}")
         parse_ai_response(response_text)
 
       other ->

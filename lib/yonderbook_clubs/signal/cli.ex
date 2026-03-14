@@ -21,6 +21,7 @@ defmodule YonderbookClubs.Signal.CLI do
   @initial_backoff_ms 1_000
   @rpc_timeout_ms 30_000
   @connect_timeout_ms 10_000
+  @max_buffer_bytes 10_000_000
 
   # --- Public API (behaviour callbacks) ---
 
@@ -65,12 +66,9 @@ defmodule YonderbookClubs.Signal.CLI do
       "options" => options
     }
 
-    Logger.info("SEND_POLL calling sendPollCreate with params: #{inspect(params)}")
-
     case call_rpc("sendPollCreate", params) do
       {:ok, result} ->
         timestamp = result["timestamp"]
-        Logger.info("SEND_POLL success: timestamp=#{timestamp}")
         {:ok, timestamp}
 
       {:error, reason} = error ->
@@ -158,16 +156,22 @@ defmodule YonderbookClubs.Signal.CLI do
   @impl GenServer
   def handle_info({:tcp, socket, data}, %{socket: socket} = state) do
     buffer = state.buffer <> data
-    {messages, remaining} = extract_lines(buffer)
 
-    state = %{state | buffer: remaining}
+    if byte_size(buffer) > @max_buffer_bytes do
+      Logger.error("Signal CLI buffer exceeded #{@max_buffer_bytes} bytes, resetting")
+      {:noreply, %{state | buffer: ""}}
+    else
+      {messages, remaining} = extract_lines(buffer)
 
-    state =
-      Enum.reduce(messages, state, fn line, acc ->
-        handle_json_line(line, acc)
-      end)
+      state = %{state | buffer: remaining}
 
-    {:noreply, state}
+      state =
+        Enum.reduce(messages, state, fn line, acc ->
+          handle_json_line(line, acc)
+        end)
+
+      {:noreply, state}
+    end
   end
 
   @impl GenServer
@@ -197,8 +201,9 @@ defmodule YonderbookClubs.Signal.CLI do
       {nil, _pending} ->
         {:noreply, state}
 
-      {_from, pending} ->
+      {from, pending} ->
         Logger.warning("RPC request #{id} timed out, cleaning up")
+        GenServer.reply(from, {:error, :rpc_timeout})
         {:noreply, %{state | pending: pending}}
     end
   end
@@ -223,7 +228,8 @@ defmodule YonderbookClubs.Signal.CLI do
     case :gen_tcp.send(state.socket, payload <> "\n") do
       :ok ->
         pending = Map.put(state.pending, id, from)
-        Process.send_after(self(), {:rpc_timeout, id}, @rpc_timeout_ms + 5_000)
+        # Reply before GenServer.call times out so we clean up pending state
+        Process.send_after(self(), {:rpc_timeout, id}, @rpc_timeout_ms - 1_000)
         {:noreply, %{state | request_id: id + 1, pending: pending}}
 
       {:error, reason} ->
@@ -289,7 +295,6 @@ defmodule YonderbookClubs.Signal.CLI do
   end
 
   defp dispatch_notification(%{"params" => %{"envelope" => envelope}} = _notification) do
-    Logger.info("RAW_ENVELOPE #{inspect(envelope)}")
 
     # Extract the envelope from the JSON-RPC notification and build a flat map
     # for the router. Only dispatch if there's a dataMessage (skip typing indicators, etc.)

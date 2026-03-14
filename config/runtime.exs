@@ -29,4 +29,8 @@ if config_env() == :prod do
       System.get_env("SIGNAL_BOT_NUMBER") ||
         raise("environment variable SIGNAL_BOT_NUMBER is missing."),
     anthropic_api_key: System.get_env("ANTHROPIC_API_KEY")
+
+  if dsn = System.get_env("SENTRY_DSN") do
+    config :sentry, dsn: dsn
+  end
 end

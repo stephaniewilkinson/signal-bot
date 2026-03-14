@@ -14,8 +14,6 @@ defmodule YonderbookClubs.Bot.Router do
   require Logger
 
   @max_poll_options 12
-  # ISBN pattern: 10 or 13 digits, optionally separated by hyphens, 13-digit may start with 978/979
-  @isbn_regex ~r/^[\d\-]{10,17}$/
   @title_by_author_regex ~r/^(.+?)\s+by\s+(.+)$/i
   @author_comma_title_regex ~r/^(.+?),\s+(.+)$/
   @club_prefix_regex ~r/^#(\d+)\s+/
@@ -96,24 +94,25 @@ defmodule YonderbookClubs.Bot.Router do
 
   defp handle_start_vote(group_id, vote_budget) do
     signal = YonderbookClubs.Signal.impl()
-    Logger.info("START_VOTE group_id from message: #{inspect(group_id)}")
 
     with {:ok, club} <- get_or_create_club_for_group(group_id),
-         _ = Logger.info("START_VOTE club_id=#{club.id} group_id=#{club.signal_group_id}"),
          :ok <- check_not_already_voting(club, group_id),
-         {:ok, suggestions} <- get_suggestions_for_vote(club, group_id) do
+         {:ok, suggestions} <- get_suggestions_for_vote(club, group_id),
+         :ok <- check_enough_suggestions(suggestions, signal, group_id) do
       {:ok, club} = Clubs.set_voting_active(club, true)
+      send_vote(signal, group_id, club, suggestions, vote_budget)
+    end
+  end
 
-      if length(suggestions) < 2 do
-        signal.send_message(
-          group_id,
-          "I've only received one suggestion. DM me another suggestion and then I'll be ready to create the poll."
-        )
-        Clubs.set_voting_active(club, false)
-        {:error, :not_enough_suggestions}
-      else
-        send_vote(signal, group_id, club, suggestions, vote_budget)
-      end
+  defp check_enough_suggestions(suggestions, signal, group_id) do
+    if length(suggestions) < 2 do
+      signal.send_message(
+        group_id,
+        "I've only received one suggestion. DM me another suggestion and then I'll be ready to create the poll."
+      )
+      {:error, :not_enough_suggestions}
+    else
+      :ok
     end
   end
 
@@ -428,7 +427,7 @@ defmodule YonderbookClubs.Bot.Router do
 
   defp isbn?(text) do
     stripped = String.replace(text, "-", "")
-    Regex.match?(@isbn_regex, text) and String.length(stripped) in [10, 13]
+    Regex.match?(~r/^\d+$/, stripped) and String.length(stripped) in [10, 13]
   end
 
   defp handle_ai_suggestion(sender_uuid, sender_name, club, text) do
@@ -441,7 +440,7 @@ defmodule YonderbookClubs.Bot.Router do
       {:error, _reason} ->
         signal.send_message(
           sender_uuid,
-          "Couldn't find that book. Try the exact title:\n\"suggest Piranesi by Susanna Clarke\""
+          "Couldn't find that book. Check the spelling and try again."
         )
 
         :ok
@@ -489,8 +488,6 @@ defmodule YonderbookClubs.Bot.Router do
       |> Map.put(:signal_sender_uuid, sender_uuid)
       |> Map.put(:signal_sender_name, sender_name)
 
-    Logger.info("SAVE_SUGGESTION club_id=#{club.id} group_id=#{club.signal_group_id}")
-
     case Suggestions.create_suggestion(club, attrs) do
       {:ok, :duplicate} ->
         signal.send_message(sender_uuid, "That one's already on the list.")
@@ -516,8 +513,6 @@ defmodule YonderbookClubs.Bot.Router do
   defp resolve_club(_sender_uuid, club_number \\ nil) do
     case YonderbookClubs.Signal.impl().list_groups() do
       {:ok, groups} when groups != [] ->
-        Logger.info("RESOLVE_CLUB list_groups returned IDs: #{inspect(Enum.map(groups, & &1["id"]))}")
-
         clubs =
           groups
           |> Enum.map(fn group ->
@@ -560,26 +555,40 @@ defmodule YonderbookClubs.Bot.Router do
   defp download_covers(suggestions) do
     suggestions
     |> Enum.filter(& &1.cover_url)
-    |> Enum.flat_map(fn suggestion ->
-      case Req.get(suggestion.cover_url) do
-        {:ok, %{status: 200, body: body}} when is_binary(body) ->
-          path = Path.join(System.tmp_dir!(), "cover_#{suggestion.id}.jpg")
+    |> Task.async_stream(
+      fn suggestion ->
+        case Req.get(suggestion.cover_url, receive_timeout: 10_000) do
+          {:ok, %{status: 200, body: body}} when is_binary(body) ->
+            path = Path.join(System.tmp_dir!(), "cover_#{suggestion.id}.jpg")
 
-          case File.write(path, body) do
-            :ok -> [path]
-            {:error, reason} ->
-              Logger.warning("Failed to write cover for #{suggestion.title}: #{inspect(reason)}")
-              []
-          end
+            case File.write(path, body) do
+              :ok -> path
+              {:error, reason} ->
+                Logger.warning("Failed to write cover for #{suggestion.title}: #{inspect(reason)}")
+                nil
+            end
 
-        _ ->
-          Logger.warning("Failed to download cover for #{suggestion.title}")
-          []
-      end
+          _ ->
+            Logger.warning("Failed to download cover for #{suggestion.title}")
+            nil
+        end
+      end,
+      max_concurrency: 6,
+      timeout: 15_000,
+      on_timeout: :kill_task
+    )
+    |> Enum.flat_map(fn
+      {:ok, path} when is_binary(path) -> [path]
+      _ -> []
     end)
   end
 
   defp cleanup_covers(paths) do
-    Enum.each(paths, fn path -> File.rm(path) end)
+    Enum.each(paths, fn path ->
+      case File.rm(path) do
+        :ok -> :ok
+        {:error, reason} -> Logger.warning("Failed to clean up cover #{path}: #{inspect(reason)}")
+      end
+    end)
   end
 end
