@@ -49,12 +49,25 @@ defmodule YonderbookClubs.Polls do
     |> Repo.one()
   end
 
-  def get_latest_active_poll(club) do
+  def get_latest_polls(club) do
+    case get_latest_poll(club) do
+      nil ->
+        []
+
+      latest ->
+        Poll
+        |> where(club_id: ^club.id, vote_budget: ^latest.vote_budget, status: ^latest.status)
+        |> where([p], p.inserted_at >= ^DateTime.add(latest.inserted_at, -60, :second))
+        |> order_by(asc: :inserted_at)
+        |> Repo.all()
+    end
+  end
+
+  def get_latest_active_polls(club) do
     Poll
     |> where(club_id: ^club.id, status: :active)
     |> order_by(desc: :inserted_at)
-    |> limit(1)
-    |> Repo.one()
+    |> Repo.all()
   end
 
   def record_vote(poll, signal_sender_uuid, option_indexes, vote_count) do
@@ -77,6 +90,12 @@ defmodule YonderbookClubs.Polls do
     poll
     |> Poll.changeset(%{status: :closed})
     |> Repo.update()
+  end
+
+  def get_combined_results(polls) do
+    polls
+    |> Enum.flat_map(&get_results/1)
+    |> Enum.sort_by(fn {_suggestion, count} -> count end, :desc)
   end
 
   def get_results(poll) do

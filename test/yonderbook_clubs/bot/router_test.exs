@@ -151,6 +151,38 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       assert :ok = Router.handle_message(group_message("group.abc123", "START VOTE 1"))
     end
+
+    test "start vote with >12 suggestions splits into two polls" do
+      club = create_club()
+
+      for i <- 1..14 do
+        add_suggestion(club, "Book #{i}", "Author #{i}")
+      end
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body, _attachments ->
+        assert body =~ "14 books"
+        assert body =~ "Vote in all 2 polls"
+        :ok
+      end)
+
+      # First poll: 12 options
+      expect(YonderbookClubs.Signal.Mock, :send_poll, fn "group.abc123", question, options ->
+        assert question =~ "Poll 1 of 2"
+        assert length(options) == 12
+        {:ok, 1000000001}
+      end)
+
+      # Second poll: 2 options
+      expect(YonderbookClubs.Signal.Mock, :send_poll, fn "group.abc123", question, options ->
+        assert question =~ "Poll 2 of 2"
+        assert length(options) == 2
+        {:ok, 1000000002}
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "start vote 9"))
+
+      assert Suggestions.list_suggestions(club) == []
+    end
   end
 
   describe "group messages - close vote" do
@@ -288,24 +320,14 @@ defmodule YonderbookClubs.Bot.RouterTest do
       assert hd(suggestions).title =~ "Piranesi"
     end
 
-    test "suggest when pool is full replies with start vote prompt" do
+    test "more than 12 suggestions are accepted" do
       club = create_club()
 
-      for i <- 1..12 do
+      for i <- 1..13 do
         add_suggestion(club, "Book #{i}", "Author #{i}")
       end
 
-      mock_list_groups_with_club()
-
-      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "Ready to start the vote"
-        assert body =~ "/start vote"
-        :ok
-      end)
-
-      assert :ok = Router.handle_message(dm_message("suggest Another Book by Another Author"))
-
-      assert length(Suggestions.list_suggestions(club)) == 12
+      assert length(Suggestions.list_suggestions(club)) == 13
     end
 
     test "suggest with free text that finds no results gives error" do

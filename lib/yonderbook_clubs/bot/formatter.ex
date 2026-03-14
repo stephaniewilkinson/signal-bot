@@ -7,9 +7,16 @@ defmodule YonderbookClubs.Bot.Formatter do
 
   @max_description_length 400
 
-  def format_blurbs(suggestions, vote_budget) do
+  def format_blurbs(suggestions, vote_budget, total_polls \\ 1) do
     n = length(suggestions)
     header = "#{n} books — pick up to #{vote_budget}:\n"
+
+    multi_poll_note =
+      if total_polls > 1 do
+        "\nVote in all #{total_polls} polls below!\n"
+      else
+        ""
+      end
 
     blurbs =
       suggestions
@@ -17,7 +24,7 @@ defmodule YonderbookClubs.Bot.Formatter do
       |> Enum.map(fn {s, i} -> format_single_blurb(s, i) end)
       |> Enum.join("\n\n")
 
-    header <> "\n" <> blurbs
+    header <> multi_poll_note <> "\n" <> blurbs
   end
 
   defp format_single_blurb(suggestion, index) do
@@ -45,10 +52,17 @@ defmodule YonderbookClubs.Bot.Formatter do
     end
   end
 
-  def format_poll_question(vote_budget) do
-    case vote_budget do
-      1 -> "What should we read next? (Pick 1)"
-      n -> "What should we read next? (Pick #{n})"
+  def format_poll_question(vote_budget, poll_num \\ 1, total_polls \\ 1) do
+    base =
+      case vote_budget do
+        1 -> "What should we read next? (Pick 1)"
+        n -> "What should we read next? (Pick #{n})"
+      end
+
+    if total_polls > 1 do
+      base <> " — Poll #{poll_num} of #{total_polls}"
+    else
+      base
     end
   end
 

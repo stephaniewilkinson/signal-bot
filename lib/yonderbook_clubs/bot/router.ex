@@ -13,6 +13,7 @@ defmodule YonderbookClubs.Bot.Router do
 
   require Logger
 
+  @max_poll_options 12
   # ISBN pattern: 10 or 13 digits, optionally separated by hyphens, 13-digit may start with 978/979
   @isbn_regex ~r/^[\d\-]{10,17}$/
   @title_by_author_regex ~r/^(.+?)\s+by\s+(.+)$/i
@@ -103,36 +104,62 @@ defmodule YonderbookClubs.Bot.Router do
          {:ok, suggestions} <- get_suggestions_for_vote(club, group_id) do
       {:ok, club} = Clubs.set_voting_active(club, true)
 
-      blurbs = Formatter.format_blurbs(suggestions, vote_budget)
-      cover_paths = download_covers(suggestions)
+      if length(suggestions) < 2 do
+        signal.send_message(
+          group_id,
+          "I've only received one suggestion. DM me another suggestion and then I'll be ready to create the poll."
+        )
+        Clubs.set_voting_active(club, false)
+        {:error, :not_enough_suggestions}
+      else
+        send_vote(signal, group_id, club, suggestions, vote_budget)
+      end
+    end
+  end
 
-      cond do
-        length(suggestions) < 2 ->
-          signal.send_message(
-            group_id,
-            "I've only received one suggestion. DM me another suggestion and then I'll be ready to create the poll."
-          )
-          Clubs.set_voting_active(club, false)
-          {:error, :not_enough_suggestions}
+  defp send_vote(signal, group_id, club, suggestions, vote_budget) do
+    chunks = Enum.chunk_every(suggestions, @max_poll_options)
+    total_polls = length(chunks)
+    blurbs = Formatter.format_blurbs(suggestions, vote_budget, total_polls)
+    cover_paths = download_covers(suggestions)
 
-        true ->
-        question = Formatter.format_poll_question(vote_budget)
-        options = Formatter.format_poll_options(suggestions)
+    case signal.send_message(group_id, blurbs, cover_paths) do
+      :ok ->
+        result =
+          chunks
+          |> Enum.with_index(1)
+          |> Enum.reduce_while(:ok, fn {chunk, poll_num}, _acc ->
+            question = Formatter.format_poll_question(vote_budget, poll_num, total_polls)
+            options = Formatter.format_poll_options(chunk)
 
-        with :ok <- signal.send_message(group_id, blurbs, cover_paths),
-             {:ok, poll_timestamp} <- signal.send_poll(group_id, question, options) do
-          Polls.create_poll(club, poll_timestamp, vote_budget, suggestions)
-          Suggestions.archive_all_suggestions(club)
-          cleanup_covers(cover_paths)
-          :ok
-        else
+            case signal.send_poll(group_id, question, options) do
+              {:ok, poll_timestamp} ->
+                Polls.create_poll(club, poll_timestamp, vote_budget, chunk)
+                {:cont, :ok}
+
+              {:error, reason} ->
+                {:halt, {:error, reason}}
+            end
+          end)
+
+        case result do
+          :ok ->
+            Suggestions.archive_all_suggestions(club)
+            cleanup_covers(cover_paths)
+            :ok
+
           {:error, reason} ->
-            Logger.error("Failed to send vote messages to group #{group_id}: #{inspect(reason)}")
+            Logger.error("Failed to send poll to group #{group_id}: #{inspect(reason)}")
             Clubs.set_voting_active(club, false)
             cleanup_covers(cover_paths)
             :ok
         end
-      end
+
+      {:error, reason} ->
+        Logger.error("Failed to send blurbs to group #{group_id}: #{inspect(reason)}")
+        Clubs.set_voting_active(club, false)
+        cleanup_covers(cover_paths)
+        :ok
     end
   end
 
@@ -178,10 +205,8 @@ defmodule YonderbookClubs.Bot.Router do
       club ->
         Clubs.set_voting_active(club, false)
 
-        case Polls.get_latest_active_poll(club) do
-          %{status: :active} = poll -> Polls.close_poll(poll)
-          _ -> :ok
-        end
+        Polls.get_latest_active_polls(club)
+        |> Enum.each(&Polls.close_poll/1)
 
         YonderbookClubs.Signal.impl().send_message(group_id, "Vote closed.")
         :ok
@@ -196,14 +221,15 @@ defmodule YonderbookClubs.Bot.Router do
         :noop
 
       club ->
-        case Polls.get_latest_poll(club) do
-          nil ->
+        case Polls.get_latest_polls(club) do
+          [] ->
             signal.send_message(group_id, "No polls yet. Start one with /start vote.")
             :ok
 
-          poll ->
-            results = Polls.get_results(poll)
-            signal.send_message(group_id, Formatter.format_results(results, poll.status))
+          polls ->
+            status = hd(polls).status
+            results = Polls.get_combined_results(polls)
+            signal.send_message(group_id, Formatter.format_results(results, status))
             :ok
         end
     end
@@ -356,21 +382,8 @@ defmodule YonderbookClubs.Bot.Router do
     end
   end
 
-  @max_poll_options 12
-
   defp process_suggestion(sender_uuid, club, text) do
-    signal = YonderbookClubs.Signal.impl()
-    active_count = length(Suggestions.list_suggestions(club))
-
-    if active_count >= @max_poll_options do
-      signal.send_message(
-        sender_uuid,
-        "Ready to start the vote! I can't accept more suggestions. Say /start vote in the group chat to start voting."
-      )
-      :ok
-    else
-      process_suggestion_input(sender_uuid, club, text)
-    end
+    process_suggestion_input(sender_uuid, club, text)
   end
 
   defp process_suggestion_input(sender_uuid, club, text) do
