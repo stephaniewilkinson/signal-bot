@@ -237,7 +237,7 @@ defmodule YonderbookClubs.Bot.Router do
 
   # --- DM Commands ---
 
-  defp handle_dm(sender_uuid, _sender_name, text) do
+  defp handle_dm(sender_uuid, sender_name, text) do
     signal = YonderbookClubs.Signal.impl()
     stripped = strip_slash(text)
 
@@ -253,7 +253,7 @@ defmodule YonderbookClubs.Bot.Router do
         handle_suggestions(sender_uuid)
 
       "suggest " <> _ ->
-        handle_suggest(sender_uuid, stripped)
+        handle_suggest(sender_uuid, sender_name, stripped)
 
       _ ->
         signal.send_message(sender_uuid, "I didn't catch that. Say /help for help.")
@@ -307,8 +307,8 @@ defmodule YonderbookClubs.Bot.Router do
 
     case resolve_club(sender_uuid) do
       {:ok, club} ->
-        grouped = Suggestions.list_suggestions_by_sender(club.id, sender_uuid)
-        signal.send_message(sender_uuid, Formatter.format_suggestions_list(grouped))
+        suggestions = Suggestions.list_suggestions(club)
+        signal.send_message(sender_uuid, Formatter.format_suggestions_list(suggestions))
         :ok
 
       {:error, :no_clubs} ->
@@ -325,7 +325,7 @@ defmodule YonderbookClubs.Bot.Router do
     end
   end
 
-  defp handle_suggest(sender_uuid, text) do
+  defp handle_suggest(sender_uuid, sender_name, text) do
     # Strip the "suggest " prefix (case-insensitive)
     suggestion_text = String.slice(text, 8..-1//1) |> String.trim()
 
@@ -334,7 +334,7 @@ defmodule YonderbookClubs.Bot.Router do
 
     case resolve_club(sender_uuid, club_number) do
       {:ok, club} ->
-        process_suggestion(sender_uuid, club, suggestion_text)
+        process_suggestion(sender_uuid, sender_name, club, suggestion_text)
 
       {:error, :no_clubs} ->
         YonderbookClubs.Signal.impl().send_message(
@@ -382,39 +382,39 @@ defmodule YonderbookClubs.Bot.Router do
     end
   end
 
-  defp process_suggestion(sender_uuid, club, text) do
-    process_suggestion_input(sender_uuid, club, text)
+  defp process_suggestion(sender_uuid, sender_name, club, text) do
+    process_suggestion_input(sender_uuid, sender_name, club, text)
   end
 
-  defp process_suggestion_input(sender_uuid, club, text) do
+  defp process_suggestion_input(sender_uuid, sender_name, club, text) do
     cond do
       String.starts_with?(String.downcase(text), "ai:") ->
         ai_text = String.slice(text, 3..-1//1) |> String.trim()
-        handle_ai_suggestion(sender_uuid, club, ai_text)
+        handle_ai_suggestion(sender_uuid, sender_name, club, ai_text)
 
       isbn?(text) ->
         isbn = YonderbookClubs.Books.normalize_isbn(text)
-        handle_isbn_suggestion(sender_uuid, club, isbn)
+        handle_isbn_suggestion(sender_uuid, sender_name, club, isbn)
 
       Regex.match?(@title_by_author_regex, text) ->
         [_, title, author] = Regex.run(@title_by_author_regex, text)
-        handle_title_author_suggestion(sender_uuid, club, String.trim(title), String.trim(author))
+        handle_title_author_suggestion(sender_uuid, sender_name, club, String.trim(title), String.trim(author))
 
       Regex.match?(@author_comma_title_regex, text) ->
         [_, author, title] = Regex.run(@author_comma_title_regex, text)
-        handle_title_author_suggestion(sender_uuid, club, String.trim(title), String.trim(author))
+        handle_title_author_suggestion(sender_uuid, sender_name, club, String.trim(title), String.trim(author))
 
       true ->
-        handle_freetext_suggestion(sender_uuid, club, text)
+        handle_freetext_suggestion(sender_uuid, sender_name, club, text)
     end
   end
 
-  defp handle_freetext_suggestion(sender_uuid, club, text) do
+  defp handle_freetext_suggestion(sender_uuid, sender_name, club, text) do
     signal = YonderbookClubs.Signal.impl()
 
     case YonderbookClubs.Books.search_general(text) do
       {:ok, book_data} ->
-        save_suggestion(sender_uuid, club, book_data)
+        save_suggestion(sender_uuid, sender_name, club, book_data)
 
       {:error, _reason} ->
         signal.send_message(
@@ -430,12 +430,12 @@ defmodule YonderbookClubs.Bot.Router do
     Regex.match?(@isbn_regex, text) and String.length(stripped) in [10, 13]
   end
 
-  defp handle_ai_suggestion(sender_uuid, club, text) do
+  defp handle_ai_suggestion(sender_uuid, sender_name, club, text) do
     signal = YonderbookClubs.Signal.impl()
 
     case YonderbookClubs.Books.search_ai(text) do
       {:ok, book_data} ->
-        save_suggestion(sender_uuid, club, book_data)
+        save_suggestion(sender_uuid, sender_name, club, book_data)
 
       {:error, _reason} ->
         signal.send_message(
@@ -447,12 +447,12 @@ defmodule YonderbookClubs.Bot.Router do
     end
   end
 
-  defp handle_isbn_suggestion(sender_uuid, club, isbn) do
+  defp handle_isbn_suggestion(sender_uuid, sender_name, club, isbn) do
     signal = YonderbookClubs.Signal.impl()
 
     case YonderbookClubs.Books.search_isbn(isbn) do
       {:ok, book_data} ->
-        save_suggestion(sender_uuid, club, book_data)
+        save_suggestion(sender_uuid, sender_name, club, book_data)
 
       {:error, _reason} ->
         signal.send_message(
@@ -463,12 +463,12 @@ defmodule YonderbookClubs.Bot.Router do
     end
   end
 
-  defp handle_title_author_suggestion(sender_uuid, club, title, author) do
+  defp handle_title_author_suggestion(sender_uuid, sender_name, club, title, author) do
     signal = YonderbookClubs.Signal.impl()
 
     case YonderbookClubs.Books.search(title, author) do
       {:ok, book_data} ->
-        save_suggestion(sender_uuid, club, book_data)
+        save_suggestion(sender_uuid, sender_name, club, book_data)
 
       {:error, _reason} ->
         signal.send_message(
@@ -480,12 +480,13 @@ defmodule YonderbookClubs.Bot.Router do
     end
   end
 
-  defp save_suggestion(sender_uuid, club, book_data) do
+  defp save_suggestion(sender_uuid, sender_name, club, book_data) do
     signal = YonderbookClubs.Signal.impl()
 
     attrs =
       book_data
       |> Map.put(:signal_sender_uuid, sender_uuid)
+      |> Map.put(:signal_sender_name, sender_name)
 
     Logger.info("SAVE_SUGGESTION club_id=#{club.id} group_id=#{club.signal_group_id}")
 

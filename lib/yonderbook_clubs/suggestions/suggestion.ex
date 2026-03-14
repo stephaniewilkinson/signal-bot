@@ -13,6 +13,7 @@ defmodule YonderbookClubs.Suggestions.Suggestion do
     field(:cover_url, :string)
     field(:description, :string)
     field(:signal_sender_uuid, :string)
+    field(:signal_sender_name, :string)
     field(:status, Ecto.Enum, values: [:active, :archived], default: :active)
 
     belongs_to(:club, YonderbookClubs.Clubs.Club)
@@ -30,6 +31,7 @@ defmodule YonderbookClubs.Suggestions.Suggestion do
       :cover_url,
       :description,
       :signal_sender_uuid,
+      :signal_sender_name,
       :club_id
     ])
     |> validate_required([:title, :author, :open_library_work_id, :signal_sender_uuid, :club_id])

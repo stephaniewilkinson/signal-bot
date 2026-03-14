@@ -100,30 +100,21 @@ defmodule YonderbookClubs.Bot.Formatter do
     "Added #{suggestion.title} by #{suggestion.author} to the list of suggestions for #{club_name}.#{blurb}\n\nSay /remove to undo."
   end
 
-  def format_suggestions_list(%{active: active, archived: archived}) do
-    parts = []
+  def format_suggestions_list([]) do
+    "No suggestions yet. DM me /suggest to add one."
+  end
 
-    parts =
-      if active != [] do
-        lines = Enum.map(active, fn s -> "  #{s.title} — #{s.author}" end)
-        parts ++ ["Active:\n" <> Enum.join(lines, "\n")]
-      else
-        parts
-      end
+  def format_suggestions_list(suggestions) do
+    lines =
+      suggestions
+      |> Enum.with_index(1)
+      |> Enum.map(fn {s, i} ->
+        name = s.signal_sender_name || "someone"
+        "#{i}. #{s.title} — #{s.author} (#{name})"
+      end)
+      |> Enum.join("\n")
 
-    parts =
-      if archived != [] do
-        lines = Enum.map(archived, fn s -> "  #{s.title} — #{s.author}" end)
-        parts ++ ["Archived:\n" <> Enum.join(lines, "\n")]
-      else
-        parts
-      end
-
-    if parts == [] do
-      "You haven't suggested any books yet."
-    else
-      Enum.join(parts, "\n\n")
-    end
+    "Current suggestions:\n\n" <> lines
   end
 
   def format_results(results, status) do
