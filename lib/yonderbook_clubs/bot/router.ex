@@ -392,10 +392,6 @@ defmodule YonderbookClubs.Bot.Router do
   end
 
   defp process_suggestion(sender_uuid, sender_name, club, text) do
-    process_suggestion_input(sender_uuid, sender_name, club, text)
-  end
-
-  defp process_suggestion_input(sender_uuid, sender_name, club, text) do
     cond do
       String.starts_with?(String.downcase(text), "ai:") ->
         ai_text = String.slice(text, 3..-1//1) |> String.trim()
