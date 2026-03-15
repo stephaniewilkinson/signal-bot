@@ -11,6 +11,11 @@ defmodule YonderbookClubs.Bot.Router do
 
   require Logger
 
+  defp set_sentry_context(metadata) do
+    tags = Map.new(metadata, fn {k, v} -> {k, to_string(v)} end)
+    Sentry.Context.set_tags_context(tags)
+  end
+
   @doc """
   Main entry point. Receives a signal-cli message map and routes it.
 
@@ -19,11 +24,18 @@ defmodule YonderbookClubs.Bot.Router do
   @spec handle_message(map()) :: :ok | :noop | {:error, atom()}
   def handle_message(%{"groupInfo" => %{"groupId" => group_id}} = msg) do
     text = (msg["message"] || "") |> String.trim()
+    command = text |> String.downcase() |> String.split(" ") |> Enum.take(2) |> Enum.join(" ")
+    Logger.metadata(group_id: group_id, command: command)
+    set_sentry_context(%{group_id: group_id, command: command, message_type: "group"})
     GroupCommands.handle(group_id, text)
   end
 
   def handle_message(%{"sourceUuid" => sender_uuid} = msg) do
     text = (msg["message"] || "") |> String.trim()
+    command = text |> String.downcase() |> String.split(" ") |> Enum.take(2) |> Enum.join(" ")
+    Logger.metadata(sender_uuid: sender_uuid, command: command)
+    set_sentry_context(%{command: command, message_type: "dm"})
+    Sentry.Context.set_user_context(%{id: sender_uuid})
     sender_name = msg["sourceName"] || "there"
     DMCommands.handle(sender_uuid, sender_name, text)
   end

@@ -317,6 +317,12 @@ defmodule YonderbookClubs.Signal.CLI do
         }
 
         Task.Supervisor.start_child(YonderbookClubs.TaskSupervisor, fn ->
+          Sentry.Context.add_breadcrumb(%{
+            category: "signal.poll_vote",
+            message: "Received poll vote",
+            level: :info
+          })
+
           YonderbookClubs.Bot.Router.handle_poll_vote(vote_msg)
         end)
 
@@ -331,6 +337,13 @@ defmodule YonderbookClubs.Signal.CLI do
           |> maybe_add_group_info(envelope)
 
         Task.Supervisor.start_child(YonderbookClubs.TaskSupervisor, fn ->
+          Sentry.Context.add_breadcrumb(%{
+            category: "signal.message",
+            message: "Received Signal message",
+            level: :info,
+            data: %{has_group: Map.has_key?(msg, "groupInfo")}
+          })
+
           YonderbookClubs.Bot.Router.handle_message(msg)
         end)
 
