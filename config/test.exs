@@ -10,4 +10,6 @@ config :yonderbook_clubs, YonderbookClubs.Repo,
 
 config :yonderbook_clubs, :signal_impl, YonderbookClubs.Signal.Mock
 
+config :yonderbook_clubs, Oban, testing: :inline
+
 config :logger, level: :warning

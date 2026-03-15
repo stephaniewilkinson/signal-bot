@@ -9,6 +9,7 @@ defmodule YonderbookClubs.Application do
     children =
       [
         YonderbookClubs.Repo,
+        {Oban, Application.fetch_env!(:yonderbook_clubs, Oban)},
         YonderbookClubs.Clubs.Cache,
         {Task.Supervisor, name: YonderbookClubs.TaskSupervisor}
       ] ++ signal_children()

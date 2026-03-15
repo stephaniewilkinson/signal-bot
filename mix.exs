@@ -36,9 +36,14 @@ defmodule YonderbookClubs.MixProject do
       {:req, "~> 0.5"},
       {:jason, "~> 1.4"},
       {:telemetry, "~> 1.2"},
+      {:oban, "~> 2.19"},
+      {:logger_json, "~> 7.0"},
       {:sentry, "~> 10.0"},
       {:hackney, "~> 1.8"},
-      {:mox, "~> 1.1", only: :test}
+      {:mox, "~> 1.1", only: :test},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:stream_data, "~> 1.1", only: [:dev, :test]}
     ]
   end
 

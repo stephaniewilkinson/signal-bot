@@ -26,12 +26,20 @@ defmodule YonderbookClubs.Telemetry do
   def handle_event([:yonderbook_clubs, :signal, :rpc], measurements, metadata, _config) do
     duration_ms = System.convert_time_unit(measurements.duration, :native, :millisecond)
 
-    Logger.info("signal_rpc method=#{metadata.method} duration=#{duration_ms}ms result=#{metadata.result}")
+    Logger.info("signal_rpc",
+      method: metadata.method,
+      duration_ms: duration_ms,
+      result: metadata.result
+    )
   end
 
   def handle_event([:yonderbook_clubs, :books, :search], measurements, metadata, _config) do
     duration_ms = System.convert_time_unit(measurements.duration, :native, :millisecond)
 
-    Logger.info("books_search type=#{metadata.type} duration=#{duration_ms}ms result=#{metadata.result}")
+    Logger.info("books_search",
+      search_type: metadata.type,
+      duration_ms: duration_ms,
+      result: metadata.result
+    )
   end
 end

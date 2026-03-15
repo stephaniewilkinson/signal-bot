@@ -31,7 +31,7 @@ defmodule YonderbookClubs.Books do
     timed(:search, %{type: :title_author}, fn ->
       url = "#{@open_library_base}/search.json"
 
-      case Req.get(url, params: [title: title, author: author, language: "eng", limit: 1], receive_timeout: @http_timeout_ms) do
+      case Req.get(url, params: [title: title, author: author, language: "eng", limit: 1], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
         {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
           build_from_search_result(first)
 
@@ -55,7 +55,7 @@ defmodule YonderbookClubs.Books do
   defp do_general_search(query) do
     url = "#{@open_library_base}/search.json"
 
-    case Req.get(url, params: [q: query, language: "eng", limit: 1], receive_timeout: @http_timeout_ms) do
+    case Req.get(url, params: [q: query, language: "eng", limit: 1], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
       {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
         build_from_search_result(first)
 
@@ -77,7 +77,7 @@ defmodule YonderbookClubs.Books do
       lookup_isbn = normalize_isbn(clean)
       url = "#{@open_library_base}/isbn/#{lookup_isbn}.json"
 
-      case Req.get(url, receive_timeout: @http_timeout_ms) do
+      case Req.get(url, receive_timeout: @http_timeout_ms, retry: :safe_transient) do
         {:ok, %{status: 200, body: body}} when is_map(body) ->
           build_from_edition(body, clean)
 
@@ -196,7 +196,7 @@ defmodule YonderbookClubs.Books do
   defp fetch_work_description(work_key) do
     url = "#{@open_library_base}#{work_key}.json"
 
-    case Req.get(url, receive_timeout: @http_timeout_ms) do
+    case Req.get(url, receive_timeout: @http_timeout_ms, retry: :safe_transient) do
       {:ok, %{status: 200, body: %{"description" => desc}}} ->
         case extract_description(desc) do
           nil -> fetch_english_edition_description(work_key)
@@ -211,7 +211,7 @@ defmodule YonderbookClubs.Books do
   defp fetch_english_edition_description(work_key) do
     url = "#{@open_library_base}#{work_key}/editions.json?limit=20"
 
-    case Req.get(url, receive_timeout: @http_timeout_ms) do
+    case Req.get(url, receive_timeout: @http_timeout_ms, retry: :safe_transient) do
       {:ok, %{status: 200, body: %{"entries" => editions}}} ->
         editions
         |> Enum.find_value(fn edition ->
@@ -257,7 +257,7 @@ defmodule YonderbookClubs.Books do
   defp fetch_author_from_work(work_key) do
     url = "#{@open_library_base}#{work_key}.json"
 
-    case Req.get(url, receive_timeout: @http_timeout_ms) do
+    case Req.get(url, receive_timeout: @http_timeout_ms, retry: :safe_transient) do
       {:ok, %{status: 200, body: %{"authors" => [%{"author" => %{"key" => key}} | _]}}} ->
         fetch_author_name(key)
 
@@ -271,7 +271,7 @@ defmodule YonderbookClubs.Books do
   defp fetch_author_name(author_key) do
     url = "#{@open_library_base}#{author_key}.json"
 
-    case Req.get(url, receive_timeout: @http_timeout_ms) do
+    case Req.get(url, receive_timeout: @http_timeout_ms, retry: :safe_transient) do
       {:ok, %{status: 200, body: %{"name" => name}}} -> name
       _other -> nil
     end
@@ -304,7 +304,7 @@ defmodule YonderbookClubs.Books do
       {"content-type", "application/json"}
     ]
 
-    case Req.post(@anthropic_base, body: body, headers: headers, receive_timeout: @http_timeout_ms) do
+    case Req.post(@anthropic_base, body: body, headers: headers, receive_timeout: @http_timeout_ms, retry: :safe_transient) do
       {:ok, %{status: 200, body: %{"content" => [%{"text" => response_text} | _]}}} ->
         parse_ai_response(response_text)
 

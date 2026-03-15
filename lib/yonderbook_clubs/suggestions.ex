@@ -54,6 +54,14 @@ defmodule YonderbookClubs.Suggestions do
   end
 
   @doc """
+  Gets a suggestion by id. Raises `Ecto.NoResultsError` if not found.
+  """
+  @spec get_suggestion!(Ecto.UUID.t()) :: Suggestion.t()
+  def get_suggestion!(id) do
+    Repo.get!(Suggestion, id)
+  end
+
+  @doc """
   Returns all suggestions for a club, ordered by inserted_at ascending.
   """
   @spec list_suggestions(Club.t()) :: [Suggestion.t()]

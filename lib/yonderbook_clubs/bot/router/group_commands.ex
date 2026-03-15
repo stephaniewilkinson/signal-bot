@@ -11,8 +11,6 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
 
   require Logger
 
-  @max_poll_options 12
-
   @spec handle(String.t(), String.t()) :: :ok | :noop | {:error, atom()}
   def handle(group_id, text) do
     case text |> Helpers.strip_slash() |> String.downcase() do
@@ -63,7 +61,15 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
       case get_suggestions_for_vote(club, group_id) do
         {:ok, suggestions} ->
           case check_enough_suggestions(suggestions, signal, group_id) do
-            :ok -> send_vote(signal, group_id, club, suggestions, vote_budget)
+            :ok ->
+              suggestion_ids = Enum.map(suggestions, & &1.id)
+
+              %{club_id: club.id, group_id: group_id, vote_budget: vote_budget, suggestion_ids: suggestion_ids}
+              |> YonderbookClubs.Workers.SendVoteWorker.new()
+              |> Oban.insert()
+
+              :ok
+
             error ->
               Clubs.set_voting_active(club, false)
               error
@@ -85,58 +91,6 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
       {:error, :not_enough_suggestions}
     else
       :ok
-    end
-  end
-
-  defp send_vote(signal, group_id, club, suggestions, vote_budget) do
-    chunks = Enum.chunk_every(suggestions, @max_poll_options)
-    total_polls = length(chunks)
-    blurbs = Formatter.format_blurbs(suggestions, vote_budget, total_polls)
-    cover_paths = Helpers.download_covers(suggestions)
-
-    case signal.send_message(group_id, blurbs, cover_paths) do
-      :ok ->
-        result =
-          chunks
-          |> Enum.with_index(1)
-          |> Enum.reduce_while({:ok, []}, fn {chunk, poll_num}, {:ok, created_polls} ->
-            question = Formatter.format_poll_question(vote_budget, poll_num, total_polls)
-            options = Formatter.format_poll_options(chunk)
-
-            case signal.send_poll(group_id, question, options) do
-              {:ok, poll_timestamp} when is_integer(poll_timestamp) ->
-                case Polls.create_poll(club, poll_timestamp, vote_budget, chunk) do
-                  {:ok, poll} ->
-                    {:cont, {:ok, [poll | created_polls]}}
-
-                  {:error, reason} ->
-                    {:halt, {:error, reason, created_polls}}
-                end
-
-              {:error, reason} ->
-                {:halt, {:error, reason, created_polls}}
-            end
-          end)
-
-        case result do
-          {:ok, _polls} ->
-            Suggestions.archive_all_suggestions(club)
-            Helpers.cleanup_covers(cover_paths)
-            :ok
-
-          {:error, reason, created_polls} ->
-            Logger.error("Failed to send poll to group #{group_id}: #{inspect(reason)}")
-            Enum.each(created_polls, &Polls.delete_poll/1)
-            Clubs.set_voting_active(club, false)
-            Helpers.cleanup_covers(cover_paths)
-            :ok
-        end
-
-      {:error, reason} ->
-        Logger.error("Failed to send blurbs to group #{group_id}: #{inspect(reason)}")
-        Clubs.set_voting_active(club, false)
-        Helpers.cleanup_covers(cover_paths)
-        :ok
     end
   end
 
