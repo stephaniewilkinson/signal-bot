@@ -42,10 +42,17 @@ defmodule YonderbookClubs.Bot.FormatterTest do
 
     test "includes count and vote budget in header" do
       suggestions = [build_suggestion(), build_suggestion(%{title: "Babel", author: "RF Kuang"})]
-      result = Formatter.format_blurbs(suggestions, 3)
+      result = Formatter.format_blurbs(suggestions, 2)
 
       assert result =~ "2 books"
-      assert result =~ "pick up to 3"
+      assert result =~ "pick up to 2"
+    end
+
+    test "caps vote budget at suggestion count in header" do
+      suggestions = [build_suggestion(), build_suggestion(%{title: "Babel", author: "RF Kuang"})]
+      result = Formatter.format_blurbs(suggestions, 5)
+
+      assert result =~ "pick up to 2"
     end
 
     test "truncates descriptions longer than 400 characters with Open Library link" do
@@ -147,6 +154,68 @@ defmodule YonderbookClubs.Bot.FormatterTest do
 
       assert result =~ "Piranesi by Susanna Clarke"
       refute result =~ "\n\n\n"
+    end
+  end
+
+  describe "format_suggestions_list/1" do
+    test "returns no-suggestions message for empty list" do
+      result = Formatter.format_suggestions_list([])
+      assert result =~ "No suggestions yet"
+    end
+
+    test "formats numbered list of suggestions" do
+      suggestions = [
+        build_suggestion(%{signal_sender_name: "Alice"}),
+        build_suggestion(%{title: "Babel", author: "RF Kuang", signal_sender_name: "Bob"})
+      ]
+
+      result = Formatter.format_suggestions_list(suggestions)
+
+      assert result =~ "1. Piranesi — Susanna Clarke (Alice)"
+      assert result =~ "2. Babel — RF Kuang (Bob)"
+    end
+
+    test "uses 'someone' for nil sender name" do
+      suggestions = [build_suggestion(%{signal_sender_name: nil})]
+      result = Formatter.format_suggestions_list(suggestions)
+
+      assert result =~ "(someone)"
+    end
+  end
+
+  describe "format_results/2" do
+    test "shows 'Live results' header for active polls" do
+      results = [{build_suggestion(), 3}]
+      result = Formatter.format_results(results, :active)
+
+      assert result =~ "Live results"
+    end
+
+    test "shows 'Final results' header for closed polls" do
+      results = [{build_suggestion(), 3}]
+      result = Formatter.format_results(results, :closed)
+
+      assert result =~ "Final results"
+    end
+
+    test "formats numbered results with vote counts" do
+      results = [
+        {build_suggestion(), 5},
+        {build_suggestion(%{title: "Babel"}), 2}
+      ]
+
+      result = Formatter.format_results(results, :active)
+
+      assert result =~ "1. Piranesi — 5 votes"
+      assert result =~ "2. Babel — 2 votes"
+    end
+
+    test "uses singular 'vote' for count of 1" do
+      results = [{build_suggestion(), 1}]
+      result = Formatter.format_results(results, :active)
+
+      assert result =~ "1 vote"
+      refute result =~ "1 votes"
     end
   end
 

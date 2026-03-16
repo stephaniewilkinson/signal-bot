@@ -92,10 +92,24 @@ defmodule YonderbookClubs.Bot.RouterTest do
       assert :ok = Router.handle_message(group_message("group.abc123", "start vote"))
     end
 
+    test "start vote without number says already open when voting is active" do
+      club = create_club()
+      Clubs.set_voting_active(club, true)
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "already open"
+        :ok
+      end)
+
+      assert {:error, :already_voting} =
+               Router.handle_message(group_message("group.abc123", "start vote"))
+    end
+
     test "start vote N parses vote budget" do
       club = create_club()
       add_suggestion(club, "Piranesi", "Susanna Clarke")
       add_suggestion(club, "Babel", "RF Kuang")
+      add_suggestion(club, "The Dispossessed", "Ursula K. Le Guin")
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body, _attachments ->
         assert body =~ "pick up to 3"
@@ -108,6 +122,24 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert :ok = Router.handle_message(group_message("group.abc123", "start vote 3"))
+    end
+
+    test "start vote caps budget at suggestion count" do
+      club = create_club()
+      add_suggestion(club, "Piranesi", "Susanna Clarke")
+      add_suggestion(club, "Babel", "RF Kuang")
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body, _attachments ->
+        assert body =~ "pick up to 2"
+        :ok
+      end)
+
+      expect(YonderbookClubs.Signal.Mock, :send_poll, fn "group.abc123", question, _options ->
+        assert question =~ "Pick 2"
+        {:ok, 1234567890}
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "start vote 5"))
     end
 
     test "start vote with no suggestions replies and does not activate voting" do

@@ -13,7 +13,8 @@ defmodule YonderbookClubs.Bot.Formatter do
   @spec format_blurbs([Suggestion.t()], pos_integer(), pos_integer()) :: String.t()
   def format_blurbs(suggestions, vote_budget, total_polls \\ 1) do
     n = length(suggestions)
-    header = "#{n} books — pick up to #{vote_budget}:\n"
+    capped = min(vote_budget, n)
+    header = "#{n} books — pick up to #{capped}:\n"
 
     multi_poll_note =
       if total_polls > 1 do
@@ -25,8 +26,7 @@ defmodule YonderbookClubs.Bot.Formatter do
     blurbs =
       suggestions
       |> Enum.with_index(1)
-      |> Enum.map(fn {s, i} -> format_single_blurb(s, i) end)
-      |> Enum.join("\n\n")
+      |> Enum.map_join("\n\n", fn {s, i} -> format_single_blurb(s, i) end)
 
     header <> multi_poll_note <> "\n" <> blurbs
   end
@@ -117,11 +117,10 @@ defmodule YonderbookClubs.Bot.Formatter do
     lines =
       suggestions
       |> Enum.with_index(1)
-      |> Enum.map(fn {s, i} ->
+      |> Enum.map_join("\n", fn {s, i} ->
         name = s.signal_sender_name || "someone"
         "#{i}. #{s.title} — #{s.author} (#{name})"
       end)
-      |> Enum.join("\n")
 
     "Current suggestions:\n\n" <> lines
   end
@@ -133,11 +132,10 @@ defmodule YonderbookClubs.Bot.Formatter do
     lines =
       results
       |> Enum.with_index(1)
-      |> Enum.map(fn {{suggestion, count}, i} ->
+      |> Enum.map_join("\n", fn {{suggestion, count}, i} ->
         votes = if count == 1, do: "1 vote", else: "#{count} votes"
         "#{i}. #{suggestion.title} — #{votes}"
       end)
-      |> Enum.join("\n")
 
     header <> "\n\n" <> lines
   end
@@ -147,8 +145,7 @@ defmodule YonderbookClubs.Bot.Formatter do
     lines =
       clubs
       |> Enum.with_index(1)
-      |> Enum.map(fn {club, index} -> "#{index}) #{club.name}" end)
-      |> Enum.join("\n")
+      |> Enum.map_join("\n", fn {club, index} -> "#{index}) #{club.name}" end)
 
     "Which club? Re-send with the number:\n" <> lines
   end

@@ -28,11 +28,21 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
         end
 
       "start vote" ->
-        YonderbookClubs.Signal.impl().send_message(
-          group_id,
-          "How many books should win? Reply \"/start vote 1\" or \"/start vote 2\", etc."
-        )
-        :ok
+        case Clubs.get_club_by_group_id(group_id) do
+          %{voting_active: true} ->
+            YonderbookClubs.Signal.impl().send_message(
+              group_id,
+              "A vote is already open. Say \"close vote\" to end it."
+            )
+            {:error, :already_voting}
+
+          _ ->
+            YonderbookClubs.Signal.impl().send_message(
+              group_id,
+              "How many books should win? Reply \"/start vote 1\" or \"/start vote 2\", etc."
+            )
+            :ok
+        end
 
       "close vote" ->
         handle_close_vote(group_id)
@@ -63,8 +73,9 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
           case check_enough_suggestions(suggestions, signal, group_id) do
             :ok ->
               suggestion_ids = Enum.map(suggestions, & &1.id)
+              capped_budget = min(vote_budget, length(suggestions))
 
-              %{club_id: club.id, group_id: group_id, vote_budget: vote_budget, suggestion_ids: suggestion_ids}
+              %{club_id: club.id, group_id: group_id, vote_budget: capped_budget, suggestion_ids: suggestion_ids}
               |> YonderbookClubs.Workers.SendVoteWorker.new()
               |> Oban.insert()
 
