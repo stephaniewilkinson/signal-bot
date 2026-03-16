@@ -128,6 +128,8 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       assert result =~ "suggest"
       assert result =~ "remove"
       assert result =~ "ai:"
+      assert result =~ "schedule"
+      assert result =~ "unschedule"
     end
   end
 
@@ -238,6 +240,115 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       result = Formatter.format_club_list(clubs)
 
       assert result =~ "number"
+    end
+  end
+
+  describe "format_schedule/1" do
+    test "returns empty message for no readings" do
+      result = Formatter.format_schedule([])
+      assert result =~ "No readings scheduled"
+    end
+
+    test "formats readings with time label and title + author" do
+      readings = [
+        %YonderbookClubs.Readings.Reading{
+          title: "Piranesi",
+          author: "Susanna Clarke",
+          time_label: "January"
+        },
+        %YonderbookClubs.Readings.Reading{
+          title: "Babel",
+          author: "RF Kuang",
+          time_label: "March"
+        }
+      ]
+
+      result = Formatter.format_schedule(readings)
+      assert result =~ "Reading schedule:"
+      assert result =~ "January — Piranesi by Susanna Clarke"
+      assert result =~ "March — Babel by RF Kuang"
+    end
+
+    test "handles readings without author" do
+      readings = [
+        %YonderbookClubs.Readings.Reading{
+          title: "Piranesi",
+          author: nil,
+          time_label: "TBD"
+        }
+      ]
+
+      result = Formatter.format_schedule(readings)
+      assert result =~ "TBD — Piranesi"
+      refute result =~ "by"
+    end
+
+    test "handles readings with empty string author" do
+      readings = [
+        %YonderbookClubs.Readings.Reading{
+          title: "Piranesi",
+          author: "",
+          time_label: "TBD"
+        }
+      ]
+
+      result = Formatter.format_schedule(readings)
+      assert result =~ "TBD — Piranesi"
+      refute result =~ "by"
+    end
+
+    test "preserves insertion order in output" do
+      readings = [
+        %YonderbookClubs.Readings.Reading{
+          title: "Piranesi",
+          author: "Susanna Clarke",
+          time_label: "January"
+        },
+        %YonderbookClubs.Readings.Reading{
+          title: "Babel",
+          author: "RF Kuang",
+          time_label: "March"
+        },
+        %YonderbookClubs.Readings.Reading{
+          title: "The Dispossessed",
+          author: "Ursula K. Le Guin",
+          time_label: "TBD"
+        }
+      ]
+
+      result = Formatter.format_schedule(readings)
+      lines = result |> String.split("\n") |> Enum.reject(&(&1 == ""))
+
+      assert Enum.at(lines, 1) =~ "January — Piranesi"
+      assert Enum.at(lines, 2) =~ "March — Babel"
+      assert Enum.at(lines, 3) =~ "TBD — The Dispossessed"
+    end
+  end
+
+  describe "format_schedule_confirmation/1" do
+    test "formats confirmation with author" do
+      reading = %YonderbookClubs.Readings.Reading{
+        title: "Piranesi",
+        author: "Susanna Clarke",
+        time_label: "January"
+      }
+
+      result = Formatter.format_schedule_confirmation(reading)
+      assert result =~ "Added to the schedule"
+      assert result =~ "Piranesi by Susanna Clarke"
+      assert result =~ "January"
+    end
+
+    test "formats confirmation without author" do
+      reading = %YonderbookClubs.Readings.Reading{
+        title: "Piranesi",
+        author: nil,
+        time_label: "TBD"
+      }
+
+      result = Formatter.format_schedule_confirmation(reading)
+      assert result =~ "Added to the schedule: Piranesi for TBD"
+      refute result =~ "by"
     end
   end
 end

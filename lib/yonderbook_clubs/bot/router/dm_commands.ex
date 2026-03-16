@@ -6,6 +6,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
   alias YonderbookClubs.Bot.Formatter
   alias YonderbookClubs.Bot.Router.Helpers
   alias YonderbookClubs.Clubs
+  alias YonderbookClubs.Readings
   alias YonderbookClubs.Suggestions
 
   require Logger
@@ -30,6 +31,9 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
       "suggestions" ->
         handle_suggestions(sender_uuid)
+
+      "schedule" ->
+        handle_show_schedule(sender_uuid)
 
       "suggest " <> _ ->
         handle_suggest(sender_uuid, sender_name, stripped)
@@ -68,6 +72,14 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
     with_club(sender_uuid, fn club ->
       suggestions = Suggestions.list_suggestions(club)
       YonderbookClubs.Signal.impl().send_message(sender_uuid, Formatter.format_suggestions_list(suggestions))
+      :ok
+    end)
+  end
+
+  defp handle_show_schedule(sender_uuid) do
+    with_club(sender_uuid, fn club ->
+      readings = Readings.list_readings(club)
+      YonderbookClubs.Signal.impl().send_message(sender_uuid, Formatter.format_schedule(readings))
       :ok
     end)
   end
@@ -264,19 +276,20 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
   defp resolve_club(_sender_uuid, club_number) do
     case YonderbookClubs.Signal.impl().list_groups() do
       {:ok, groups} when groups != [] ->
-        clubs =
-          groups
-          |> Enum.map(fn group ->
-            case Clubs.get_club_by_group_id(group["id"]) do
-              nil ->
-                {:ok, club} = Clubs.get_or_create_club(group["id"], group["name"] || "Book Club")
-                club
+        group_ids = Enum.map(groups, & &1["id"])
+        existing = Clubs.get_clubs_by_group_ids(group_ids)
+        existing_ids = MapSet.new(existing, & &1.signal_group_id)
 
-              club ->
-                club
-            end
+        new_clubs =
+          groups
+          |> Enum.reject(fn g -> MapSet.member?(existing_ids, g["id"]) end)
+          |> Enum.map(fn g ->
+            {:ok, club} = Clubs.get_or_create_club(g["id"], g["name"] || "Book Club")
+            Clubs.Cache.put(g["id"], club)
+            club
           end)
 
+        clubs = existing ++ new_clubs
         pick_club(clubs, club_number)
 
       {:ok, []} ->

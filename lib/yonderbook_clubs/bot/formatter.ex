@@ -6,6 +6,7 @@ defmodule YonderbookClubs.Bot.Formatter do
   """
 
   alias YonderbookClubs.Clubs.Club
+  alias YonderbookClubs.Readings.Reading
   alias YonderbookClubs.Suggestions.Suggestion
 
   @max_description_length 400
@@ -87,12 +88,15 @@ defmodule YonderbookClubs.Bot.Formatter do
 
     /remove — undo your last suggestion
     /suggestions — see all suggestions for the club
+    /schedule — see the reading schedule
     /help — this message
 
     In the group chat:
     /start vote N — start a vote (pick up to N)
     /close vote — end the current vote
-    /results — see vote results\
+    /results — see vote results
+    /schedule <book> for <time> — add to schedule
+    /unschedule <book> — remove from schedule\
     """
   end
 
@@ -148,5 +152,32 @@ defmodule YonderbookClubs.Bot.Formatter do
       |> Enum.map_join("\n", fn {club, index} -> "#{index}) #{club.name}" end)
 
     "Which club? Re-send with the number:\n" <> lines
+  end
+
+  @spec format_schedule([Reading.t()]) :: String.t()
+  def format_schedule([]) do
+    "No readings scheduled yet. In the group chat, try:\n/schedule Piranesi by Susanna Clarke for January"
+  end
+
+  def format_schedule(readings) do
+    lines =
+      Enum.map_join(readings, "\n", fn reading ->
+        "#{reading.time_label} — #{format_title_author(reading)}"
+      end)
+
+    "Reading schedule:\n\n" <> lines
+  end
+
+  @spec format_schedule_confirmation(Reading.t()) :: String.t()
+  def format_schedule_confirmation(reading) do
+    "Added to the schedule: #{format_title_author(reading)} for #{reading.time_label}."
+  end
+
+  defp format_title_author(reading) do
+    case reading.author do
+      nil -> reading.title
+      "" -> reading.title
+      author -> "#{reading.title} by #{author}"
+    end
   end
 end

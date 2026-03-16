@@ -542,6 +542,310 @@ defmodule YonderbookClubs.Bot.RouterTest do
     end
   end
 
+  # --- Schedule Tests ---
+
+  describe "group messages - schedule" do
+    test "schedule with title and author creates a reading" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Added to the schedule"
+        assert body =~ "Piranesi by Susanna Clarke"
+        assert body =~ "January"
+        :ok
+      end)
+
+      assert :ok =
+               Router.handle_message(
+                 group_message("group.abc123", "/schedule Piranesi by Susanna Clarke for January")
+               )
+    end
+
+    test "schedule without author creates a reading" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Added to the schedule"
+        assert body =~ "Piranesi"
+        assert body =~ "January"
+        :ok
+      end)
+
+      assert :ok =
+               Router.handle_message(
+                 group_message("group.abc123", "/schedule Piranesi for January")
+               )
+    end
+
+    test "schedule with no args shows the schedule" do
+      club = create_club()
+
+      YonderbookClubs.Readings.create_reading(club, %{
+        title: "Piranesi",
+        author: "Susanna Clarke",
+        time_label: "January"
+      })
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Reading schedule"
+        assert body =~ "January — Piranesi by Susanna Clarke"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "/schedule"))
+    end
+
+    test "schedule with no entries shows empty message" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "No readings scheduled"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "/schedule"))
+    end
+
+    test "schedule preserves original casing of title and author" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Piranesi by Susanna Clarke"
+        :ok
+      end)
+
+      assert :ok =
+               Router.handle_message(
+                 group_message("group.abc123", "/SCHEDULE Piranesi by Susanna Clarke for January")
+               )
+    end
+
+    test "schedule without 'for' keyword gives help" do
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Try:"
+        :ok
+      end)
+
+      assert :ok =
+               Router.handle_message(
+                 group_message("group.abc123", "/schedule Piranesi")
+               )
+    end
+
+    test "schedule works without leading slash" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Added to the schedule"
+        assert body =~ "Piranesi"
+        :ok
+      end)
+
+      assert :ok =
+               Router.handle_message(
+                 group_message("group.abc123", "schedule Piranesi for January")
+               )
+    end
+
+    test "schedule auto-creates club if none exists" do
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.new789", body ->
+        assert body =~ "Added to the schedule"
+        :ok
+      end)
+
+      assert :ok =
+               Router.handle_message(
+                 group_message("group.new789", "/schedule Piranesi for January")
+               )
+    end
+
+    test "schedule handles 'for' in book titles" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Waiting for Godot"
+        assert body =~ "January"
+        :ok
+      end)
+
+      assert :ok =
+               Router.handle_message(
+                 group_message("group.abc123", "/schedule Waiting for Godot for January")
+               )
+    end
+
+    test "schedule handles 'by' in titles with author" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Stand by Me"
+        assert body =~ "Stephen King"
+        :ok
+      end)
+
+      assert :ok =
+               Router.handle_message(
+                 group_message("group.abc123", "/schedule Stand by Me by Stephen King for April")
+               )
+    end
+
+    test "re-scheduling same book updates the time" do
+      club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, 2, fn "group.abc123", body ->
+        assert body =~ "Added to the schedule"
+        :ok
+      end)
+
+      Router.handle_message(
+        group_message("group.abc123", "/schedule Piranesi for January")
+      )
+
+      Router.handle_message(
+        group_message("group.abc123", "/schedule Piranesi for February")
+      )
+
+      readings = YonderbookClubs.Readings.list_readings(club)
+      assert length(readings) == 1
+      assert hd(readings).time_label == "February"
+    end
+  end
+
+  describe "group messages - unschedule" do
+    test "unschedule removes a reading by title" do
+      club = create_club()
+
+      YonderbookClubs.Readings.create_reading(club, %{
+        title: "Piranesi",
+        time_label: "January"
+      })
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Removed"
+        assert body =~ "Piranesi"
+        :ok
+      end)
+
+      assert :ok =
+               Router.handle_message(
+                 group_message("group.abc123", "/unschedule Piranesi")
+               )
+    end
+
+    test "unschedule with unknown title gives error" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Couldn't find"
+        :ok
+      end)
+
+      assert :ok =
+               Router.handle_message(
+                 group_message("group.abc123", "/unschedule Nonexistent")
+               )
+    end
+
+    test "unschedule with no args gives help" do
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Which book?"
+        :ok
+      end)
+
+      assert :ok =
+               Router.handle_message(
+                 group_message("group.abc123", "/unschedule")
+               )
+    end
+
+    test "unschedule by time label removes the reading" do
+      club = create_club()
+
+      YonderbookClubs.Readings.create_reading(club, %{
+        title: "Piranesi",
+        time_label: "March"
+      })
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Removed"
+        assert body =~ "Piranesi"
+        :ok
+      end)
+
+      assert :ok =
+               Router.handle_message(
+                 group_message("group.abc123", "/unschedule March")
+               )
+    end
+
+    test "unschedule is case-insensitive for book title" do
+      club = create_club()
+
+      YonderbookClubs.Readings.create_reading(club, %{
+        title: "Piranesi",
+        time_label: "January"
+      })
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Removed"
+        assert body =~ "Piranesi"
+        :ok
+      end)
+
+      assert :ok =
+               Router.handle_message(
+                 group_message("group.abc123", "/unschedule piranesi")
+               )
+    end
+  end
+
+  describe "DM messages - schedule" do
+    test "schedule DM shows the reading schedule" do
+      club = create_club()
+
+      YonderbookClubs.Readings.create_reading(club, %{
+        title: "Piranesi",
+        author: "Susanna Clarke",
+        time_label: "January"
+      })
+
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Reading schedule"
+        assert body =~ "January — Piranesi by Susanna Clarke"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("schedule"))
+    end
+
+    test "schedule DM with no entries shows empty message" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "No readings scheduled"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("schedule"))
+    end
+
+    test "schedule DM when not in any clubs tells the user" do
+      expect(YonderbookClubs.Signal.Mock, :list_groups, fn ->
+        {:ok, []}
+      end)
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "not in any of your group chats"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("schedule"))
+    end
+  end
+
   describe "malformed messages" do
     test "message with no groupInfo or sourceUuid returns :noop" do
       assert :noop = Router.handle_message(%{"message" => "hello"})

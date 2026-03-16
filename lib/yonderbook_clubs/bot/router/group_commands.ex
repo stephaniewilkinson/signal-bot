@@ -1,19 +1,25 @@
 defmodule YonderbookClubs.Bot.Router.GroupCommands do
   @moduledoc """
-  Handles group chat commands: start vote, close vote, results.
+  Handles group chat commands: start vote, close vote, results, schedule.
   """
 
   alias YonderbookClubs.Bot.Formatter
   alias YonderbookClubs.Bot.Router.Helpers
   alias YonderbookClubs.Clubs
   alias YonderbookClubs.Polls
+  alias YonderbookClubs.Readings
   alias YonderbookClubs.Suggestions
 
   require Logger
 
+  @schedule_with_author_regex ~r/^(.+)\s+by\s+(.+)\s+for\s+(.+)$/i
+  @schedule_without_author_regex ~r/^(.+)\s+for\s+(.+)$/i
+
   @spec handle(String.t(), String.t()) :: :ok | :noop | {:error, atom()}
   def handle(group_id, text) do
-    case text |> Helpers.strip_slash() |> String.downcase() do
+    stripped = Helpers.strip_slash(text)
+
+    case String.downcase(stripped) do
       "start vote " <> rest ->
         case parse_vote_budget(rest) do
           {:ok, n} ->
@@ -49,6 +55,24 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
 
       "results" ->
         handle_results(group_id)
+
+      "schedule " <> _ ->
+        schedule_text = String.slice(stripped, 9..-1//1) |> String.trim()
+        handle_schedule(group_id, schedule_text)
+
+      "schedule" ->
+        handle_show_schedule(group_id)
+
+      "unschedule " <> _ ->
+        unschedule_text = String.slice(stripped, 11..-1//1) |> String.trim()
+        handle_unschedule(group_id, unschedule_text)
+
+      "unschedule" ->
+        YonderbookClubs.Signal.impl().send_message(
+          group_id,
+          "Which book? Try: /unschedule Piranesi"
+        )
+        :ok
 
       _ ->
         :noop
@@ -178,6 +202,100 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
           [first | _] = polls ->
             results = Polls.get_combined_results(polls)
             signal.send_message(group_id, Formatter.format_results(results, first.status))
+            :ok
+        end
+    end
+  end
+
+  # --- Schedule ---
+
+  defp handle_schedule(group_id, text) do
+    signal = YonderbookClubs.Signal.impl()
+
+    cond do
+      Regex.match?(@schedule_with_author_regex, text) ->
+        [_, title, author, time_label] = Regex.run(@schedule_with_author_regex, text)
+        save_reading(group_id, String.trim(title), String.trim(author), String.trim(time_label))
+
+      Regex.match?(@schedule_without_author_regex, text) ->
+        [_, title, time_label] = Regex.run(@schedule_without_author_regex, text)
+        save_reading(group_id, String.trim(title), nil, String.trim(time_label))
+
+      true ->
+        signal.send_message(
+          group_id,
+          "Try: /schedule Piranesi by Susanna Clarke for January"
+        )
+        :ok
+    end
+  end
+
+  defp save_reading(group_id, title, author, time_label) do
+    signal = YonderbookClubs.Signal.impl()
+
+    case get_or_create_club_for_group(group_id) do
+      {:ok, club} ->
+        attrs = %{title: title, author: author, time_label: time_label}
+
+        case Readings.create_reading(club, attrs) do
+          {:ok, reading} ->
+            signal.send_message(group_id, Formatter.format_schedule_confirmation(reading))
+            :ok
+
+          {:error, :limit_reached} ->
+            signal.send_message(group_id, "The schedule is full (50 max). Remove one first with /unschedule.")
+            :ok
+
+          {:error, _changeset} ->
+            signal.send_message(group_id, "Something went wrong. Try again in a minute.")
+            :ok
+        end
+
+      {:error, _} ->
+        signal.send_message(group_id, "Something went wrong. Try again in a minute.")
+        :ok
+    end
+  end
+
+  defp handle_show_schedule(group_id) do
+    signal = YonderbookClubs.Signal.impl()
+
+    case Clubs.get_club_by_group_id(group_id) do
+      nil ->
+        signal.send_message(group_id, Formatter.format_schedule([]))
+        :ok
+
+      club ->
+        readings = Readings.list_readings(club)
+        signal.send_message(group_id, Formatter.format_schedule(readings))
+        :ok
+    end
+  end
+
+  defp handle_unschedule(group_id, "") do
+    YonderbookClubs.Signal.impl().send_message(
+      group_id,
+      "Which book? Try: /unschedule Piranesi"
+    )
+    :ok
+  end
+
+  defp handle_unschedule(group_id, title) do
+    signal = YonderbookClubs.Signal.impl()
+
+    case Clubs.get_club_by_group_id(group_id) do
+      nil ->
+        signal.send_message(group_id, "No schedule entries yet.")
+        :ok
+
+      club ->
+        case Readings.remove_reading(club, title) do
+          {:ok, reading} ->
+            signal.send_message(group_id, "Removed #{reading.title} from the schedule.")
+            :ok
+
+          {:error, :not_found} ->
+            signal.send_message(group_id, "Couldn't find \"#{title}\" on the schedule.")
             :ok
         end
     end
