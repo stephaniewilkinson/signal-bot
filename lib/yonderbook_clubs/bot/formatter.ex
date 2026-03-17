@@ -78,25 +78,37 @@ defmodule YonderbookClubs.Bot.Formatter do
   end
 
   @spec format_help() :: String.t()
-  def format_help do
+  def format_help, do: format_help(:dm)
+
+  @spec format_help(:dm | :group) :: String.t()
+  def format_help(:dm) do
     """
-    Suggest a book (DM):
+    Suggest a book:
     /suggest Piranesi by Susanna Clarke
     /suggest Toni Morrison, The Bluest Eye
     /suggest 978-1635575996
     /suggest ai: that infinite house book
 
-    /remove — undo your last suggestion
-    /suggestions — see all suggestions for the club
+    /remove (or /r) — undo your last suggestion
+    /suggestions — see all suggestions
     /schedule — see the reading schedule
     /help — this message
 
-    In the group chat:
+    In the group chat: /start vote, /close vote, /results, /schedule, /unschedule\
+    """
+  end
+
+  def format_help(:group) do
+    """
+    Group commands:
     /start vote N — start a vote (pick up to N)
     /close vote — end the current vote
     /results — see vote results
+    /schedule — see the reading schedule
     /schedule <book> for <time> — add to schedule
-    /unschedule <book> — remove from schedule\
+    /unschedule <book> — remove from schedule
+
+    In a DM with me: /suggest, /remove, /suggestions, /help\
     """
   end
 
@@ -109,7 +121,7 @@ defmodule YonderbookClubs.Bot.Formatter do
         desc -> "\n\n" <> truncate_with_link(desc, @max_description_length, suggestion.open_library_work_id)
       end
 
-    "Added #{suggestion.title} by #{suggestion.author} to the list of suggestions for #{club_name}.#{blurb}\n\nSay /remove to undo."
+    "Added #{suggestion.title} by #{suggestion.author} to the list of suggestions for #{club_name}.#{blurb}\n\nSay /remove to undo. When everyone's ready, say /start vote in the group."
   end
 
   @spec format_suggestions_list([Suggestion.t()]) :: String.t()
@@ -171,6 +183,15 @@ defmodule YonderbookClubs.Bot.Formatter do
   @spec format_schedule_confirmation(Reading.t()) :: String.t()
   def format_schedule_confirmation(reading) do
     "Added to the schedule: #{format_title_author(reading)} for #{reading.time_label}."
+  end
+
+  @spec format_welcome() :: String.t()
+  def format_welcome do
+    """
+    Hi! I'm Yonderbook Clubs. DM me to suggest books, then use /start vote here to pick your next read.
+
+    Say /help in a DM for the full list of commands.\
+    """
   end
 
   defp format_title_author(reading) do

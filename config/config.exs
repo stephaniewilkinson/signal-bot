@@ -15,7 +15,8 @@ config :logger, :console,
 config :yonderbook_clubs, Oban,
   engine: Oban.Engines.Basic,
   queues: [default: 5],
-  repo: YonderbookClubs.Repo
+  repo: YonderbookClubs.Repo,
+  plugins: [{Oban.Plugins.Pruner, max_age: 86_400}]
 
 config :sentry,
   environment_name: config_env(),

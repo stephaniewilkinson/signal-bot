@@ -92,6 +92,36 @@ defmodule YonderbookClubs.Suggestions do
   end
 
   @doc """
+  Returns true if the given sender has ever created a suggestion (any status, any club).
+  """
+  @spec has_suggestions_from?(String.t()) :: boolean()
+  def has_suggestions_from?(signal_sender_uuid) do
+    Suggestion
+    |> where(signal_sender_uuid: ^signal_sender_uuid)
+    |> Repo.exists?()
+  end
+
+  @doc """
+  Returns the club name for a sender who has suggestions in exactly one club.
+  Returns nil if the sender has no suggestions or is in multiple clubs.
+  """
+  @spec sender_club_name(String.t()) :: String.t() | nil
+  def sender_club_name(signal_sender_uuid) do
+    names =
+      Suggestion
+      |> join(:inner, [s], c in YonderbookClubs.Clubs.Club, on: s.club_id == c.id)
+      |> where([s], s.signal_sender_uuid == ^signal_sender_uuid)
+      |> distinct([s, c], c.id)
+      |> select([s, c], c.name)
+      |> Repo.all()
+
+    case names do
+      [name] -> name
+      _ -> nil
+    end
+  end
+
+  @doc """
   Archives all active suggestions for a club. Returns `{count, nil}`.
   """
   @spec archive_all_suggestions(Club.t()) :: {non_neg_integer(), nil}

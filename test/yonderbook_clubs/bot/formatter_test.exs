@@ -122,14 +122,39 @@ defmodule YonderbookClubs.Bot.FormatterTest do
   end
 
   describe "format_help/0" do
-    test "returns help text containing key phrases" do
+    test "DM help emphasizes DM commands" do
       result = Formatter.format_help()
 
-      assert result =~ "suggest"
-      assert result =~ "remove"
+      assert result =~ "/suggest"
+      assert result =~ "/remove"
       assert result =~ "ai:"
-      assert result =~ "schedule"
-      assert result =~ "unschedule"
+      assert result =~ "/schedule"
+      assert result =~ "/r)"
+    end
+
+    test "DM help briefly mentions group commands" do
+      result = Formatter.format_help(:dm)
+
+      assert result =~ "/start vote"
+      assert result =~ "/close vote"
+      assert result =~ "/unschedule"
+    end
+
+    test "group help emphasizes group commands" do
+      result = Formatter.format_help(:group)
+
+      assert result =~ "/start vote N"
+      assert result =~ "/close vote"
+      assert result =~ "/results"
+      assert result =~ "/schedule"
+      assert result =~ "/unschedule"
+    end
+
+    test "group help briefly mentions DM commands" do
+      result = Formatter.format_help(:group)
+
+      assert result =~ "/suggest"
+      assert result =~ "/remove"
     end
   end
 
@@ -141,6 +166,7 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       assert result =~ "Piranesi by Susanna Clarke"
       assert result =~ "Book Nerds"
       assert result =~ "remove"
+      assert result =~ "/start vote"
     end
 
     test "includes description blurb" do
@@ -240,6 +266,16 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       result = Formatter.format_club_list(clubs)
 
       assert result =~ "number"
+    end
+  end
+
+  describe "format_welcome/0" do
+    test "includes key onboarding info" do
+      result = Formatter.format_welcome()
+
+      assert result =~ "DM me"
+      assert result =~ "/start vote"
+      assert result =~ "/help"
     end
   end
 

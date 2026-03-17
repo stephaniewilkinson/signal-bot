@@ -55,6 +55,22 @@ defmodule YonderbookClubs.SuggestionsTest do
     end
   end
 
+  describe "get_suggestion!/1" do
+    test "returns suggestion by id", %{club: club} do
+      {:ok, suggestion} = Suggestions.create_suggestion(club, @valid_attrs)
+
+      found = Suggestions.get_suggestion!(suggestion.id)
+      assert found.id == suggestion.id
+      assert found.title == "Piranesi"
+    end
+
+    test "raises on invalid id" do
+      assert_raise Ecto.NoResultsError, fn ->
+        Suggestions.get_suggestion!(Ecto.UUID.generate())
+      end
+    end
+  end
+
   describe "list_suggestions/1" do
     test "returns all suggestions for a club", %{club: club} do
       {:ok, _first} =

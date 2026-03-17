@@ -16,6 +16,12 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
   @club_prefix_regex ~r/^#(\d+)\s+/
   @max_input_length 500
 
+  @fallback_messages [
+    "I didn't catch that. Say /help for help.",
+    "Not sure what you mean. Try /help.",
+    "I don't recognize that command. /help has the full list."
+  ]
+
   @spec handle(String.t(), String.t(), String.t()) :: :ok | :noop | {:error, atom()}
   def handle(sender_uuid, sender_name, text) do
     signal = YonderbookClubs.Signal.impl()
@@ -23,10 +29,10 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
     case String.downcase(stripped) do
       "help" ->
-        signal.send_message(sender_uuid, Formatter.format_help())
+        signal.send_message(sender_uuid, Formatter.format_help(:dm))
         :ok
 
-      "remove" ->
+      cmd when cmd in ["remove", "r"] ->
         handle_remove(sender_uuid)
 
       "suggestions" ->
@@ -38,13 +44,61 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       "suggest " <> _ ->
         handle_suggest(sender_uuid, sender_name, stripped)
 
-      "suggest" ->
+      "s " <> _ ->
+        expanded = "suggest" <> String.slice(stripped, 1..-1//1)
+        handle_suggest(sender_uuid, sender_name, expanded)
+
+      cmd when cmd in ["suggest", "s"] ->
         signal.send_message(sender_uuid, "Suggest what? Try: /suggest Piranesi by Susanna Clarke")
         :ok
 
-      _ ->
-        signal.send_message(sender_uuid, "I didn't catch that. Say /help for help.")
+      cmd when cmd in ["start vote", "start poll", "close vote", "close poll",
+                       "results", "unschedule"] ->
+        redirect_to_group(signal, sender_uuid)
         :ok
+
+      "start vote " <> _ ->
+        redirect_to_group(signal, sender_uuid)
+        :ok
+
+      "start poll " <> _ ->
+        redirect_to_group(signal, sender_uuid)
+        :ok
+
+      "unschedule " <> _ ->
+        redirect_to_group(signal, sender_uuid)
+        :ok
+
+      _ ->
+        handle_fallback(signal, sender_uuid, String.downcase(stripped))
+        :ok
+    end
+  end
+
+  defp redirect_to_group(signal, sender_uuid) do
+    club_hint =
+      case Suggestions.sender_club_name(sender_uuid) do
+        nil -> "the group chat"
+        name -> "the #{name} group chat"
+      end
+
+    signal.send_message(
+      sender_uuid,
+      "That command works in #{club_hint}, not here. Say /help to see what you can do in DMs."
+    )
+  end
+
+  defp handle_fallback(signal, sender_uuid, downcased) do
+    case Helpers.fuzzy_match_command(downcased, :dm) do
+      {:ok, command} ->
+        signal.send_message(sender_uuid, "Did you mean /#{command}?")
+
+      :no_match ->
+        if Suggestions.has_suggestions_from?(sender_uuid) do
+          signal.send_message(sender_uuid, Enum.random(@fallback_messages))
+        else
+          signal.send_message(sender_uuid, Formatter.format_help(:dm))
+        end
     end
   end
 

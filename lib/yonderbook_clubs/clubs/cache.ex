@@ -25,8 +25,6 @@ defmodule YonderbookClubs.Clubs.Cache do
       [] ->
         :miss
     end
-  rescue
-    ArgumentError -> :miss
   end
 
   @spec put(String.t(), struct()) :: :ok
@@ -34,16 +32,12 @@ defmodule YonderbookClubs.Clubs.Cache do
     expires_at = System.monotonic_time(:millisecond) + @ttl_ms
     :ets.insert(@table, {signal_group_id, club, expires_at})
     :ok
-  rescue
-    ArgumentError -> :ok
   end
 
   @spec invalidate(String.t()) :: :ok
   def invalidate(signal_group_id) do
     :ets.delete(@table, signal_group_id)
     :ok
-  rescue
-    ArgumentError -> :ok
   end
 
   # GenServer callbacks

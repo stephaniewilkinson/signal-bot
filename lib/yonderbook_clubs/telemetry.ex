@@ -12,11 +12,22 @@ defmodule YonderbookClubs.Telemetry do
     [:yonderbook_clubs, :books, :search]
   ]
 
+  @oban_events [
+    [:oban, :job, :exception]
+  ]
+
   @spec attach() :: :ok
   def attach do
     :telemetry.attach_many(
       "yonderbook-clubs-logger",
       @events,
+      &__MODULE__.handle_event/4,
+      nil
+    )
+
+    :telemetry.attach_many(
+      "yonderbook-clubs-oban",
+      @oban_events,
       &__MODULE__.handle_event/4,
       nil
     )
@@ -40,6 +51,16 @@ defmodule YonderbookClubs.Telemetry do
       search_type: metadata.type,
       duration_ms: duration_ms,
       result: metadata.result
+    )
+  end
+
+  def handle_event([:oban, :job, :exception], _measurements, metadata, _config) do
+    %{reason: reason, stacktrace: stacktrace, job: job} = metadata
+
+    Sentry.capture_exception(reason,
+      stacktrace: stacktrace,
+      tags: %{worker: job.worker, queue: job.queue},
+      extra: %{attempt: job.attempt, max_attempts: job.max_attempts, args: job.args}
     )
   end
 end

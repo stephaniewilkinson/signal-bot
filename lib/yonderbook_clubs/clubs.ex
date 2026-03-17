@@ -31,6 +31,20 @@ defmodule YonderbookClubs.Clubs do
   end
 
   @doc """
+  Gets all clubs matching the given signal_group_ids in a single query.
+  """
+  @spec get_clubs_by_group_ids([String.t()]) :: [Club.t()]
+  def get_clubs_by_group_ids([]), do: []
+
+  def get_clubs_by_group_ids(signal_group_ids) do
+    import Ecto.Query
+
+    Club
+    |> where([c], c.signal_group_id in ^signal_group_ids)
+    |> Repo.all()
+  end
+
+  @doc """
   Gets a club by signal_group_id. Returns nil if not found.
   """
   @spec get_club_by_group_id(String.t()) :: Club.t() | nil
@@ -56,6 +70,24 @@ defmodule YonderbookClubs.Clubs do
     result =
       club
       |> Club.changeset(%{voting_active: active})
+      |> Repo.update()
+
+    case result do
+      {:ok, updated} -> Cache.invalidate(updated.signal_group_id)
+      _ -> :ok
+    end
+
+    result
+  end
+
+  @doc """
+  Marks a club as onboarded (welcome message has been sent).
+  """
+  @spec mark_onboarded(Club.t()) :: {:ok, Club.t()} | {:error, Ecto.Changeset.t()}
+  def mark_onboarded(%Club{} = club) do
+    result =
+      club
+      |> Club.changeset(%{onboarded: true})
       |> Repo.update()
 
     case result do

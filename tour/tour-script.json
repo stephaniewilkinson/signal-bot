@@ -1,0 +1,185 @@
+[
+  {
+    "scene": "Scene 1",
+    "context": "dm",
+    "chatName": "Yonderbook Clubs",
+    "steps": [
+      {
+        "sender": "user",
+        "name": "Mara",
+        "text": "/suggest Piranesi by Susanna Clarke",
+        "pause": 1500
+      },
+      {
+        "sender": "bot",
+        "name": "Yonderbook Clubs",
+        "text": "Added Piranesi by Susanna Clarke to the list of suggestions for Fireside Book Club.\n\nPiranesi's house is no ordinary building: its rooms are infinite, its corridors endless, its walls are lined with thousands upon thousands of statues…\n\nSay /remove to undo.",
+        "covers": ["9781526622426"],
+        "pause": 2500
+      }
+    ]
+  },
+  {
+    "scene": "Scene 2",
+    "context": "dm",
+    "chatName": "Yonderbook Clubs",
+    "steps": [
+      {
+        "sender": "user",
+        "name": "Jay",
+        "text": "/suggest Babel by RF Kuang",
+        "pause": 1500
+      },
+      {
+        "sender": "bot",
+        "name": "Yonderbook Clubs",
+        "text": "Added Babel by RF Kuang to the list of suggestions for Fireside Book Club.\n\nTraduttore, traditore: An act of translation is always an act of betrayal. Robin Swift trains at Oxford's Royal Institute of Translation — also known as Babel…\n\nSay /remove to undo.",
+        "covers": ["9780063021426"],
+        "pause": 2500
+      }
+    ]
+  },
+  {
+    "scene": "Scene 3",
+    "context": "dm",
+    "chatName": "Yonderbook Clubs",
+    "steps": [
+      {
+        "sender": "user",
+        "name": "Melanie",
+        "text": "/suggest Caliban and the Witch by Silvia Federici",
+        "pause": 1500
+      },
+      {
+        "sender": "bot",
+        "name": "Yonderbook Clubs",
+        "text": "Added Caliban and the Witch by Silvia Federici to the list of suggestions for Fireside Book Club.\n\nA history of the body in the transition to capitalism. Moving from the peasant revolts of the late Middle Ages to the witch-hunts and the rise of mechanical philosophy…\n\nSay /remove to undo.",
+        "covers": ["9781570270598"],
+        "pause": 2500
+      }
+    ]
+  },
+  {
+    "scene": "Suggestions",
+    "context": "dm",
+    "chatName": "Yonderbook Clubs",
+    "steps": [
+      {
+        "sender": "user",
+        "name": "Melanie",
+        "text": "/suggestions",
+        "pause": 1500
+      },
+      {
+        "sender": "bot",
+        "name": "Yonderbook Clubs",
+        "text": "Current suggestions:\n\n1. Piranesi — Susanna Clarke (Mara)\n2. Babel — RF Kuang (Jay)\n3. Caliban and the Witch — Silvia Federici (Melanie)",
+        "pause": 2500
+      }
+    ]
+  },
+  {
+    "scene": "Vote",
+    "context": "group",
+    "chatName": "Fireside Book Club",
+    "steps": [
+      {
+        "sender": "user",
+        "name": "Stephanie",
+        "text": "/start vote 2",
+        "pause": 1500
+      },
+      {
+        "sender": "bot",
+        "name": "Yonderbook Clubs",
+        "text": "3 books — pick up to 2:\n\n1. Piranesi — Susanna Clarke\nPiranesi's house is no ordinary building: its rooms are infinite, its corridors endless, its walls are lined with thousands upon thousands of statues…\n\n2. Babel — RF Kuang\nTraduttore, traditore: An act of translation is always an act of betrayal. Robin Swift trains at Oxford's Royal Institute of Translation — also known as Babel…\n\n3. Caliban and the Witch — Silvia Federici\nA history of the body in the transition to capitalism. Moving from the peasant revolts of the late Middle Ages to the witch-hunts and the rise of mechanical philosophy…",
+        "covers": ["9781526622426", "9780063021426", "9781570270598"],
+        "pause": 2500
+      },
+      {
+        "sender": "bot",
+        "name": "Yonderbook Clubs",
+        "text": "What should we read next? (Pick 2)\n\n☐ Piranesi\n☐ Babel\n☐ Caliban and the Witch",
+        "isPoll": true,
+        "pause": 2000
+      },
+      {
+        "sender": "bot",
+        "name": "Yonderbook Clubs",
+        "text": "What should we read next? (Pick 2)\n\n☑ Piranesi  ∙  4 votes\n☐ Babel  ∙  2 votes\n☑ Caliban and the Witch  ∙  3 votes",
+        "isPoll": true,
+        "replaces": true,
+        "pause": 2500
+      }
+    ]
+  },
+  {
+    "scene": "Close Vote",
+    "context": "group",
+    "chatName": "Fireside Book Club",
+    "steps": [
+      {
+        "sender": "user",
+        "name": "Stephanie",
+        "text": "/close vote",
+        "pause": 1500
+      },
+      {
+        "sender": "bot",
+        "name": "Yonderbook Clubs",
+        "text": "Vote closed!\n\nFinal results:\n\n1. Piranesi — 4 votes\n2. Caliban and the Witch — 3 votes\n3. Babel — 2 votes",
+        "pause": 2500
+      }
+    ]
+  },
+  {
+    "scene": "Schedule",
+    "context": "group",
+    "chatName": "Fireside Book Club",
+    "steps": [
+      {
+        "sender": "user",
+        "name": "Stephanie",
+        "text": "/schedule Piranesi for April",
+        "pause": 1500
+      },
+      {
+        "sender": "bot",
+        "name": "Yonderbook Clubs",
+        "text": "Added to the schedule: Piranesi by Susanna Clarke for April.",
+        "pause": 2000
+      },
+      {
+        "sender": "user",
+        "name": "Stephanie",
+        "text": "/schedule Caliban and the Witch for May",
+        "pause": 1500
+      },
+      {
+        "sender": "bot",
+        "name": "Yonderbook Clubs",
+        "text": "Added to the schedule: Caliban and the Witch by Silvia Federici for May.",
+        "pause": 2000
+      }
+    ]
+  },
+  {
+    "scene": "View Schedule",
+    "context": "dm",
+    "chatName": "Yonderbook Clubs",
+    "steps": [
+      {
+        "sender": "user",
+        "name": "Melanie",
+        "text": "/schedule",
+        "pause": 1500
+      },
+      {
+        "sender": "bot",
+        "name": "Yonderbook Clubs",
+        "text": "Reading schedule:\n\nApril — Piranesi by Susanna Clarke\nMay — Caliban and the Witch by Silvia Federici",
+        "pause": 2500
+      }
+    ]
+  }
+]

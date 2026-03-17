@@ -7,6 +7,7 @@ defmodule YonderbookClubs.Clubs.Club do
           signal_group_id: String.t(),
           name: String.t(),
           voting_active: boolean(),
+          onboarded: boolean(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -18,6 +19,7 @@ defmodule YonderbookClubs.Clubs.Club do
     field(:signal_group_id, :string)
     field(:name, :string)
     field(:voting_active, :boolean, default: false)
+    field(:onboarded, :boolean, default: false)
 
     has_many(:suggestions, YonderbookClubs.Suggestions.Suggestion)
 
@@ -26,7 +28,7 @@ defmodule YonderbookClubs.Clubs.Club do
 
   def changeset(club, attrs) do
     club
-    |> cast(attrs, [:signal_group_id, :name, :voting_active])
+    |> cast(attrs, [:signal_group_id, :name, :voting_active, :onboarded])
     |> validate_required([:signal_group_id, :name])
     |> unique_constraint(:signal_group_id)
   end

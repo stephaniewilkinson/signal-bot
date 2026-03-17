@@ -202,7 +202,7 @@ defmodule YonderbookClubs.Signal.CLI do
       {nil, _pending} ->
         {:noreply, state}
 
-      {from, pending} ->
+      {{from, _timer_ref}, pending} ->
         Logger.warning("RPC request #{id} timed out, cleaning up")
         GenServer.reply(from, {:error, :rpc_timeout})
         {:noreply, %{state | pending: pending}}
@@ -228,9 +228,8 @@ defmodule YonderbookClubs.Signal.CLI do
 
     case :gen_tcp.send(state.socket, payload <> "\n") do
       :ok ->
-        pending = Map.put(state.pending, id, from)
-        # Reply before GenServer.call times out so we clean up pending state
-        Process.send_after(self(), {:rpc_timeout, id}, @rpc_timeout_ms - 1_000)
+        timer_ref = Process.send_after(self(), {:rpc_timeout, id}, @rpc_timeout_ms - 1_000)
+        pending = Map.put(state.pending, id, {from, timer_ref})
         {:noreply, %{state | request_id: id + 1, pending: pending}}
 
       {:error, reason} ->
@@ -269,7 +268,8 @@ defmodule YonderbookClubs.Signal.CLI do
   defp handle_json_line(line, state) do
     case Jason.decode(line) do
       {:ok, %{"id" => id} = response} when is_map_key(state.pending, id) ->
-        {from, pending} = Map.pop(state.pending, id)
+        {{from, timer_ref}, pending} = Map.pop(state.pending, id)
+        Process.cancel_timer(timer_ref)
 
         reply =
           case response do
@@ -362,7 +362,8 @@ defmodule YonderbookClubs.Signal.CLI do
   defp maybe_add_group_info(msg, _envelope), do: msg
 
   defp reject_all_pending(state, reason) do
-    Enum.each(state.pending, fn {_id, from} ->
+    Enum.each(state.pending, fn {_id, {from, timer_ref}} ->
+      Process.cancel_timer(timer_ref)
       GenServer.reply(from, {:error, reason})
     end)
 

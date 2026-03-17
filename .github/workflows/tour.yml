@@ -1,0 +1,47 @@
+name: Regenerate Product Tour
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/yonderbook_clubs/bot/**'
+      - 'tour/tour-script.json'
+      - 'lib/mix/tasks/generate_tour.ex'
+
+permissions:
+  contents: write
+
+jobs:
+  generate-tour:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '27'
+          elixir-version: '1.18'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg gifsicle
+
+      - name: Install resvg
+        run: cargo install resvg --locked
+
+      - name: Get dependencies
+        run: mix deps.get
+
+      - name: Generate tour
+        run: mix generate_tour
+
+      - name: Commit tour assets if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tour.gif tour.mp4
+          git diff --cached --quiet || git commit -m "chore: regenerate product tour"
+          git push

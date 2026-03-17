@@ -18,64 +18,95 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
   @spec handle(String.t(), String.t()) :: :ok | :noop | {:error, atom()}
   def handle(group_id, text) do
     stripped = Helpers.strip_slash(text)
+    downcased = String.downcase(stripped)
 
-    case String.downcase(stripped) do
-      "start vote " <> rest ->
-        case parse_vote_budget(rest) do
-          {:ok, n} ->
-            handle_start_vote(group_id, n)
+    result =
+      case downcased do
+        "start vote " <> rest ->
+          handle_start_vote_with_budget(group_id, rest)
 
-          {:error, _} ->
-            YonderbookClubs.Signal.impl().send_message(
-              group_id,
-              "Pick a number between 1 and 50, like \"/start vote 2\"."
-            )
-            :ok
-        end
+        "start poll " <> rest ->
+          handle_start_vote_with_budget(group_id, rest)
 
-      "start vote" ->
-        case Clubs.get_club_by_group_id(group_id) do
-          %{voting_active: true} ->
-            YonderbookClubs.Signal.impl().send_message(
-              group_id,
-              "A vote is already open. Say \"close vote\" to end it."
-            )
-            {:error, :already_voting}
+        cmd when cmd in ["start vote", "start poll"] ->
+          handle_start_vote_prompt(group_id)
 
-          _ ->
-            YonderbookClubs.Signal.impl().send_message(
-              group_id,
-              "How many books should win? Reply \"/start vote 1\" or \"/start vote 2\", etc."
-            )
-            :ok
-        end
+        cmd when cmd in ["close vote", "close poll"] ->
+          handle_close_vote(group_id)
 
-      "close vote" ->
-        handle_close_vote(group_id)
+        "results" ->
+          handle_results(group_id)
 
-      "results" ->
-        handle_results(group_id)
+        "schedule " <> _ ->
+          schedule_text = String.slice(stripped, 9..-1//1) |> String.trim()
+          handle_schedule(group_id, schedule_text)
 
-      "schedule " <> _ ->
-        schedule_text = String.slice(stripped, 9..-1//1) |> String.trim()
-        handle_schedule(group_id, schedule_text)
+        "schedule" ->
+          handle_show_schedule(group_id)
 
-      "schedule" ->
-        handle_show_schedule(group_id)
+        "unschedule " <> _ ->
+          unschedule_text = String.slice(stripped, 11..-1//1) |> String.trim()
+          handle_unschedule(group_id, unschedule_text)
 
-      "unschedule " <> _ ->
-        unschedule_text = String.slice(stripped, 11..-1//1) |> String.trim()
-        handle_unschedule(group_id, unschedule_text)
+        "unschedule" ->
+          YonderbookClubs.Signal.impl().send_message(
+            group_id,
+            "Which book? Try: /unschedule Piranesi"
+          )
+          :ok
 
-      "unschedule" ->
+        cmd when cmd in ["suggest", "remove", "help"] ->
+          YonderbookClubs.Signal.impl().send_message(
+            group_id,
+            "That command works in DMs, not here. Send me a direct message to #{cmd}."
+          )
+          :ok
+
+        "suggest " <> _ ->
+          YonderbookClubs.Signal.impl().send_message(
+            group_id,
+            "Suggestions are private — send me a DM instead."
+          )
+          :ok
+
+        _ ->
+          :noop
+      end
+
+    if result != :noop, do: maybe_send_welcome(group_id)
+
+    result
+  end
+
+  defp handle_start_vote_with_budget(group_id, rest) do
+    case parse_vote_budget(rest) do
+      {:ok, n} ->
+        handle_start_vote(group_id, n)
+
+      {:error, _} ->
         YonderbookClubs.Signal.impl().send_message(
           group_id,
-          "Which book? Try: /unschedule Piranesi"
+          "Pick a number between 1 and 50, like \"/start vote 2\"."
         )
         :ok
+    end
+  end
+
+  defp handle_start_vote_prompt(group_id) do
+    case Clubs.get_club_by_group_id(group_id) do
+      %{voting_active: true} ->
+        YonderbookClubs.Signal.impl().send_message(
+          group_id,
+          "A vote is already open. Say \"close vote\" to end it."
+        )
+        {:error, :already_voting}
 
       _ ->
-        :noop
+        YonderbookClubs.Signal.impl().send_message(
+          group_id,
+          "How many books should win? Reply \"/start vote 1\" or \"/start vote 2\", etc."
+        )
+        :ok
     end
   end
 
@@ -177,7 +208,7 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
           Polls.get_latest_active_polls(club)
           |> Enum.each(&Polls.close_poll/1)
 
-          YonderbookClubs.Signal.impl().send_message(group_id, "Vote closed.")
+          YonderbookClubs.Signal.impl().send_message(group_id, "Vote closed. Say /results for the tally.")
         else
           YonderbookClubs.Signal.impl().send_message(group_id, "No vote is active right now.")
         end
@@ -298,6 +329,17 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
             signal.send_message(group_id, "Couldn't find \"#{title}\" on the schedule.")
             :ok
         end
+    end
+  end
+
+  defp maybe_send_welcome(group_id) do
+    case Clubs.get_club_by_group_id(group_id) do
+      %{onboarded: false} = club ->
+        Clubs.mark_onboarded(club)
+        YonderbookClubs.Signal.impl().send_message(group_id, Formatter.format_welcome())
+
+      _ ->
+        :ok
     end
   end
 end
