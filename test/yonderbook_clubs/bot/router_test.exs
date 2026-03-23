@@ -1435,6 +1435,29 @@ defmodule YonderbookClubs.Bot.RouterTest do
       assert :ok = Router.handle_message(dm_message("/suggestions"))
     end
 
+    test "groups where bot is no longer a member are excluded from resolve" do
+      _club_a = create_club("group.a", "Old Club")
+      club_b = create_club("group.b", "Current Club")
+      add_suggestion(club_b, "Piranesi", "Susanna Clarke")
+
+      # signal-cli returns both groups, but bot was removed from group.a
+      expect(YonderbookClubs.Signal.Mock, :list_groups, fn ->
+        {:ok, [
+          %{"id" => "group.a", "name" => "Old Club", "isMember" => false},
+          %{"id" => "group.b", "name" => "Current Club", "isMember" => true}
+        ]}
+      end)
+
+      # Should resolve directly to Club B — not prompt "which club?"
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        refute body =~ "Which one"
+        assert body =~ "Piranesi"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/suggestions"))
+    end
+
     test "resolve works when signal-cli returns members as phone numbers" do
       club = create_club()
       add_suggestion(club, "Piranesi", "Susanna Clarke")
