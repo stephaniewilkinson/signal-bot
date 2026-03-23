@@ -352,36 +352,24 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
     end
   end
 
-  defp resolve_club(sender_uuid, club_number) do
+  defp resolve_club(_sender_uuid, club_number) do
     case YonderbookClubs.Signal.impl().list_groups() do
       {:ok, groups} when groups != [] ->
-        # Only show groups the sender is actually a member of
-        sender_groups = Enum.filter(groups, fn g ->
-          members = g["members"] || []
-          members == [] or sender_uuid in members
-        end)
+        group_ids = Enum.map(groups, & &1["id"])
+        existing = Clubs.get_clubs_by_group_ids(group_ids)
+        existing_ids = MapSet.new(existing, & &1.signal_group_id)
 
-        case sender_groups do
-          [] ->
-            {:error, :no_clubs}
+        new_clubs =
+          groups
+          |> Enum.reject(fn g -> MapSet.member?(existing_ids, g["id"]) end)
+          |> Enum.map(fn g ->
+            {:ok, club} = Clubs.get_or_create_club(g["id"], g["name"] || "Book Club")
+            Clubs.Cache.put(g["id"], club)
+            club
+          end)
 
-          _ ->
-            sender_group_ids = Enum.map(sender_groups, & &1["id"])
-            existing = Clubs.get_clubs_by_group_ids(sender_group_ids)
-            existing_ids = MapSet.new(existing, & &1.signal_group_id)
-
-            new_clubs =
-              sender_groups
-              |> Enum.reject(fn g -> MapSet.member?(existing_ids, g["id"]) end)
-              |> Enum.map(fn g ->
-                {:ok, club} = Clubs.get_or_create_club(g["id"], g["name"] || "Book Club")
-                Clubs.Cache.put(g["id"], club)
-                club
-              end)
-
-            clubs = existing ++ new_clubs
-            pick_club(clubs, club_number)
-        end
+        clubs = existing ++ new_clubs
+        pick_club(clubs, club_number)
 
       {:ok, []} ->
         {:error, :no_clubs}

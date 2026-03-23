@@ -1409,6 +1409,52 @@ defmodule YonderbookClubs.Bot.RouterTest do
     end
   end
 
+  describe "removing bot from one club does not break other clubs" do
+    test "user can still DM for Club B after bot is removed from Club A" do
+      # Setup: bot is in two clubs, user is a member of both
+      _club_a = create_club("group.a", "Club A")
+      club_b = create_club("group.b", "Club B")
+      add_suggestion(club_b, "Piranesi", "Susanna Clarke")
+
+      # Bot is removed from Club A
+      bot_number = Application.get_env(:yonderbook_clubs, :signal_bot_number)
+      Router.handle_group_quit("group.a", bot_number)
+
+      # User DMs /suggestions — list_groups now only returns Club B
+      expect(YonderbookClubs.Signal.Mock, :list_groups, fn ->
+        {:ok, [%{"id" => "group.b", "name" => "Club B", "members" => ["uuid-sender"]}]}
+      end)
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        # Should resolve to Club B and show its suggestions — NOT "not in any clubs"
+        refute body =~ "not in any"
+        assert body =~ "Piranesi"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/suggestions"))
+    end
+
+    test "resolve works when signal-cli returns members as phone numbers" do
+      club = create_club()
+      add_suggestion(club, "Piranesi", "Susanna Clarke")
+
+      # signal-cli returns members as phone numbers, not UUIDs —
+      # resolve must not filter by member format
+      expect(YonderbookClubs.Signal.Mock, :list_groups, fn ->
+        {:ok, [%{"id" => "group.abc123", "name" => "Test Club", "members" => ["+14155551234"]}]}
+      end)
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        refute body =~ "not in any"
+        assert body =~ "Piranesi"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/suggestions"))
+    end
+  end
+
   describe "event-driven club deactivation" do
     test "handle_group_quit deactivates a club when the bot leaves" do
       club = create_club("group.removed", "Removed Club")
@@ -1490,39 +1536,36 @@ defmodule YonderbookClubs.Bot.RouterTest do
     end
   end
 
-  describe "DM messages - sender membership filtering" do
-    test "only shows clubs the sender is a member of" do
-      _club1 = create_club("group.abc123", "Alice's Club")
-      _club2 = create_club("group.def456", "Bob's Club")
+  describe "DM messages - club resolution from list_groups" do
+    test "resolves to the single club when list_groups returns one group" do
+      club = create_club("group.abc123", "Alice's Club")
+      add_suggestion(club, "Piranesi", "Susanna Clarke")
 
-      # list_groups returns both, but with member lists
       expect(YonderbookClubs.Signal.Mock, :list_groups, fn ->
-        {:ok, [
-          %{"id" => "group.abc123", "name" => "Alice's Club", "members" => ["uuid-sender"]},
-          %{"id" => "group.def456", "name" => "Bob's Club", "members" => ["uuid-bob"]}
-        ]}
+        {:ok, [%{"id" => "group.abc123", "name" => "Alice's Club"}]}
       end)
 
-      # Sender is only in club 1 — should resolve directly without multi-club prompt
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "No suggestions yet"
+        assert body =~ "Piranesi"
         :ok
       end)
 
       assert :ok = Router.handle_message(dm_message("/suggestions"))
     end
 
-    test "sender in no groups gets no_clubs error" do
-      _club = create_club("group.abc123", "Not Your Club")
+    test "prompts for club when list_groups returns multiple groups" do
+      _club1 = create_club("group.abc123", "Alice's Club")
+      _club2 = create_club("group.def456", "Bob's Club")
 
       expect(YonderbookClubs.Signal.Mock, :list_groups, fn ->
         {:ok, [
-          %{"id" => "group.abc123", "name" => "Not Your Club", "members" => ["uuid-other"]}
+          %{"id" => "group.abc123", "name" => "Alice's Club", "members" => ["+1234567890"]},
+          %{"id" => "group.def456", "name" => "Bob's Club", "members" => ["+0987654321"]}
         ]}
       end)
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "not in any"
+        assert body =~ "Which one"
         :ok
       end)
 
