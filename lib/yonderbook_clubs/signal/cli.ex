@@ -347,10 +347,10 @@ defmodule YonderbookClubs.Signal.CLI do
           YonderbookClubs.Bot.Router.handle_message(msg)
         end)
 
-      %{"dataMessage" => %{"groupInfo" => %{"groupId" => group_id, "type" => type}}}
+      %{"sourceNumber" => source_number, "dataMessage" => %{"groupInfo" => %{"groupId" => group_id, "type" => type}}}
       when type in ["QUIT", "KICKED"] ->
         Task.Supervisor.start_child(YonderbookClubs.TaskSupervisor, fn ->
-          YonderbookClubs.Bot.Router.handle_group_quit(group_id)
+          YonderbookClubs.Bot.Router.handle_group_quit(group_id, source_number)
         end)
 
       _ ->

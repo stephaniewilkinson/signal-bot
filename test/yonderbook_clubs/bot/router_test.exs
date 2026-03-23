@@ -1410,12 +1410,13 @@ defmodule YonderbookClubs.Bot.RouterTest do
   end
 
   describe "event-driven club deactivation" do
-    test "handle_group_quit deactivates a club" do
+    test "handle_group_quit deactivates a club when the bot leaves" do
       club = create_club("group.removed", "Removed Club")
       assert club.active == true
 
       # Simulate the bot being removed from the group
-      assert :ok = Router.handle_group_quit("group.removed")
+      bot_number = Application.get_env(:yonderbook_clubs, :signal_bot_number)
+      assert :ok = Router.handle_group_quit("group.removed", bot_number)
 
       # The club should now be inactive
       updated = YonderbookClubs.Repo.get!(YonderbookClubs.Clubs.Club, club.id)
@@ -1423,8 +1424,21 @@ defmodule YonderbookClubs.Bot.RouterTest do
       assert updated.voting_active == false
     end
 
+    test "handle_group_quit does NOT deactivate when a regular member leaves" do
+      club = create_club("group.still-active", "Active Club")
+      assert club.active == true
+
+      # A regular member leaves — NOT the bot
+      assert :ok = Router.handle_group_quit("group.still-active", "some-member-uuid")
+
+      # The club should still be active
+      updated = YonderbookClubs.Repo.get!(YonderbookClubs.Clubs.Club, club.id)
+      assert updated.active == true
+    end
+
     test "handle_group_quit with unknown group is a no-op" do
-      assert :ok = Router.handle_group_quit("group.unknown")
+      bot_number = Application.get_env(:yonderbook_clubs, :signal_bot_number)
+      assert :ok = Router.handle_group_quit("group.unknown", bot_number)
     end
   end
 

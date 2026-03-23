@@ -73,18 +73,28 @@ defmodule YonderbookClubs.Bot.Router do
   def handle_poll_vote(_msg), do: :noop
 
   @doc """
-  Handles a group quit/kick event — deactivates the club when the bot is removed.
-  """
-  @spec handle_group_quit(String.t()) :: :ok
-  def handle_group_quit(group_id) do
-    Logger.info("Bot removed from group #{group_id}, deactivating club")
+  Handles a group quit/kick event — deactivates the club only when the bot itself is removed.
 
-    case YonderbookClubs.Clubs.get_club_by_group_id(group_id) do
-      nil -> :ok
-      club ->
-        YonderbookClubs.Clubs.set_voting_active(club, false)
-        YonderbookClubs.Clubs.deactivate_club(club)
-        :ok
+  `source_number` is the phone number of the member who left/was kicked.
+  If it doesn't match the bot's number, the event is ignored.
+  """
+  @spec handle_group_quit(String.t(), String.t()) :: :ok
+  def handle_group_quit(group_id, source_number) do
+    bot_number = Application.get_env(:yonderbook_clubs, :signal_bot_number)
+
+    if source_number == bot_number do
+      Logger.info("Bot removed from group #{group_id}, deactivating club")
+
+      case YonderbookClubs.Clubs.get_club_by_group_id(group_id) do
+        nil -> :ok
+        club ->
+          YonderbookClubs.Clubs.set_voting_active(club, false)
+          YonderbookClubs.Clubs.deactivate_club(club)
+          :ok
+      end
+    else
+      Logger.debug("Member #{source_number} left group #{group_id}, ignoring")
+      :ok
     end
   end
 end

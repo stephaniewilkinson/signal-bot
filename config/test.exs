@@ -9,6 +9,7 @@ config :yonderbook_clubs, YonderbookClubs.Repo,
   pool_size: 10
 
 config :yonderbook_clubs, :signal_impl, YonderbookClubs.Signal.Mock
+config :yonderbook_clubs, :signal_bot_number, "+15550001234"
 
 config :yonderbook_clubs, Oban, testing: :manual
 
