@@ -83,6 +83,8 @@ defmodule YonderbookClubs.Bot.Formatter do
   @spec format_help(:dm | :group) :: String.t()
   def format_help(:dm) do
     """
+    Hey there! Here's what I can do:
+
     Suggest a book:
     /suggest Piranesi by Susanna Clarke
     /suggest Toni Morrison, The Bluest Eye
@@ -90,9 +92,15 @@ defmodule YonderbookClubs.Bot.Formatter do
     /suggest ai: that infinite house book
 
     /remove (or /r) — undo your last suggestion
-    /suggestions — see all suggestions
+    /suggestions — see what's been suggested
     /schedule — see the reading schedule
     /help — this message
+
+    In multiple clubs? Add #N to pick one:
+    /suggest #2 Piranesi by Susanna Clarke
+    /suggestions #1
+    /remove #2
+    Or just reply with the number when prompted!
 
     In the group chat: /start vote, /close vote, /results, /schedule, /unschedule\
     """
@@ -100,7 +108,8 @@ defmodule YonderbookClubs.Bot.Formatter do
 
   def format_help(:group) do
     """
-    Group commands:
+    Here's what you can do in the group:
+
     /start vote N — start a vote (pick up to N)
     /close vote — end the current vote
     /results — see vote results
@@ -108,7 +117,7 @@ defmodule YonderbookClubs.Bot.Formatter do
     /schedule <book> for <time> — add to schedule
     /unschedule <book> — remove from schedule
 
-    In a DM with me: /suggest, /remove, /suggestions, /help\
+    For suggestions and more, DM me! Try /suggest, /remove, /suggestions, or /help.\
     """
   end
 
@@ -121,12 +130,12 @@ defmodule YonderbookClubs.Bot.Formatter do
         desc -> "\n\n" <> truncate_with_link(desc, @max_description_length, suggestion.open_library_work_id)
       end
 
-    "Added #{suggestion.title} by #{suggestion.author} to the list of suggestions for #{club_name}.#{blurb}\n\nSay /remove to undo. When everyone's ready, say /start vote in the group."
+    "Nice! Added #{suggestion.title} by #{suggestion.author} to #{club_name}'s list.#{blurb}\n\nSay /remove to undo. When everyone's ready, say /start vote in the group!"
   end
 
   @spec format_suggestions_list([Suggestion.t()]) :: String.t()
   def format_suggestions_list([]) do
-    "No suggestions yet. DM me /suggest to add one."
+    "No suggestions yet! DM me /suggest to toss one in."
   end
 
   def format_suggestions_list(suggestions) do
@@ -138,7 +147,7 @@ defmodule YonderbookClubs.Bot.Formatter do
         "#{i}. #{s.title} — #{s.author} (#{name})"
       end)
 
-    "Current suggestions:\n\n" <> lines
+    "Here's what's been suggested so far:\n\n" <> lines
   end
 
   @spec format_results([{Suggestion.t(), non_neg_integer()}], :active | :closed) :: String.t()
@@ -163,12 +172,12 @@ defmodule YonderbookClubs.Bot.Formatter do
       |> Enum.with_index(1)
       |> Enum.map_join("\n", fn {club, index} -> "#{index}) #{club.name}" end)
 
-    "Which club? Re-send with the number:\n" <> lines
+    "You're in a few clubs! Which one? Reply with the number:\n" <> lines
   end
 
   @spec format_schedule([Reading.t()]) :: String.t()
   def format_schedule([]) do
-    "No readings scheduled yet. In the group chat, try:\n/schedule Piranesi by Susanna Clarke for January"
+    "Nothing on the schedule yet! In the group chat, try:\n/schedule Piranesi by Susanna Clarke for January"
   end
 
   def format_schedule(readings) do
@@ -182,15 +191,15 @@ defmodule YonderbookClubs.Bot.Formatter do
 
   @spec format_schedule_confirmation(Reading.t()) :: String.t()
   def format_schedule_confirmation(reading) do
-    "Added to the schedule: #{format_title_author(reading)} for #{reading.time_label}."
+    "Nice! #{format_title_author(reading)} is on the schedule for #{reading.time_label}."
   end
 
   @spec format_welcome() :: String.t()
   def format_welcome do
     """
-    Hi! I'm Yonderbook Clubs. DM me to suggest books, then use /start vote here to pick your next read.
+    Hey! I'm Yonderbook Clubs. DM me to suggest books, then say /start vote here when you're ready to pick your next read!
 
-    Say /help in a DM for the full list of commands.\
+    Send me /help in a DM to see everything I can do.\
     """
   end
 

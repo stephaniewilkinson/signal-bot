@@ -1,11 +1,17 @@
 defmodule YonderbookClubs.Bot.RouterTest do
   use YonderbookClubs.DataCase, async: false
+  use Oban.Testing, repo: YonderbookClubs.Repo
 
   import Mox
 
   alias YonderbookClubs.Bot.Router
   alias YonderbookClubs.Clubs
   alias YonderbookClubs.Suggestions
+
+  setup do
+    YonderbookClubs.Bot.PendingCommands.clear()
+    :ok
+  end
 
   setup :verify_on_exit!
 
@@ -78,6 +84,9 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       assert :ok = Router.handle_message(group_message("group.abc123", "start vote 1"))
 
+      assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
+      assert %{success: 1} = Oban.drain_queue(queue: :default)
+
       assert Suggestions.list_suggestions(club) == []
 
       updated_club = Clubs.get_club_by_group_id("group.abc123")
@@ -98,7 +107,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       Clubs.set_voting_active(club, true)
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "already open"
+        assert body =~ "already a vote going"
         :ok
       end)
 
@@ -123,6 +132,9 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert :ok = Router.handle_message(group_message("group.abc123", "start vote 3"))
+
+      assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
+      assert %{success: 1} = Oban.drain_queue(queue: :default)
     end
 
     test "start vote caps budget at suggestion count" do
@@ -141,6 +153,9 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert :ok = Router.handle_message(group_message("group.abc123", "start vote 5"))
+
+      assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
+      assert %{success: 1} = Oban.drain_queue(queue: :default)
     end
 
     test "start vote with no suggestions replies and does not activate voting" do
@@ -163,7 +178,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       Clubs.set_voting_active(club, true)
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "already open"
+        assert body =~ "already a vote going"
         :ok
       end)
 
@@ -183,6 +198,9 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert :ok = Router.handle_message(group_message("group.abc123", "start poll 1"))
+
+      assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
+      assert %{success: 1} = Oban.drain_queue(queue: :default)
     end
 
     test "start vote is case insensitive" do
@@ -197,6 +215,9 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert :ok = Router.handle_message(group_message("group.abc123", "START VOTE 1"))
+
+      assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
+      assert %{success: 1} = Oban.drain_queue(queue: :default)
     end
 
     test "start vote with >12 suggestions splits into two polls" do
@@ -228,6 +249,9 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       assert :ok = Router.handle_message(group_message("group.abc123", "start vote 9"))
 
+      assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
+      assert %{success: 1} = Oban.drain_queue(queue: :default)
+
       assert Suggestions.list_suggestions(club) == []
     end
   end
@@ -238,7 +262,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       add_suggestion(club, "Piranesi", "Susanna Clarke")
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "only received one suggestion"
+        assert body =~ "Only one suggestion so far"
         :ok
       end)
 
@@ -286,7 +310,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       _club = create_club()
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "No vote is active"
+        assert body =~ "no vote going on right now"
         :ok
       end)
 
@@ -424,7 +448,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
     test "suggest with no text gives guidance" do
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "Suggest what?"
+        assert body =~ "What would you like to suggest?"
         :ok
       end)
 
@@ -438,7 +462,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       long_text = String.duplicate("a", 501)
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "too long"
+        assert body =~ "a bit long"
         :ok
       end)
 
@@ -451,7 +475,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       mock_list_groups_with_club()
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "Couldn't find that book"
+        assert body =~ "couldn't find that one"
         :ok
       end)
 
@@ -581,7 +605,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       _club = create_club()
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "Added to the schedule"
+        assert body =~ "on the schedule"
         assert body =~ "Piranesi by Susanna Clarke"
         assert body =~ "January"
         :ok
@@ -597,7 +621,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       _club = create_club()
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "Added to the schedule"
+        assert body =~ "on the schedule"
         assert body =~ "Piranesi"
         assert body =~ "January"
         :ok
@@ -631,7 +655,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       _club = create_club()
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "No readings scheduled"
+        assert body =~ "Nothing on the schedule yet"
         :ok
       end)
 
@@ -652,9 +676,11 @@ defmodule YonderbookClubs.Bot.RouterTest do
                )
     end
 
-    test "schedule without 'for' keyword gives help" do
+    test "schedule without 'for' keyword asks for time" do
+      _club = create_club()
+
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "Try:"
+        assert body =~ "For when?"
         :ok
       end)
 
@@ -668,7 +694,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       _club = create_club()
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "Added to the schedule"
+        assert body =~ "on the schedule"
         assert body =~ "Piranesi"
         :ok
       end)
@@ -681,7 +707,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
     test "schedule auto-creates club if none exists" do
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.new789", body ->
-        assert body =~ "Added to the schedule"
+        assert body =~ "on the schedule"
         :ok
       end)
 
@@ -731,7 +757,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       club = create_club()
 
       expect(YonderbookClubs.Signal.Mock, :send_message, 2, fn "group.abc123", body ->
-        assert body =~ "Added to the schedule"
+        assert body =~ "on the schedule"
         :ok
       end)
 
@@ -774,7 +800,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       _club = create_club()
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "Couldn't find"
+        assert body =~ "couldn't find"
         :ok
       end)
 
@@ -786,7 +812,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
     test "unschedule with no args gives help" do
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "Which book?"
+        assert body =~ "Which book"
         :ok
       end)
 
@@ -863,7 +889,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       mock_list_groups_with_club()
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "No readings scheduled"
+        assert body =~ "Nothing on the schedule yet"
         :ok
       end)
 
@@ -891,7 +917,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       {:ok, _club} = Clubs.get_or_create_club("group.abc123", "Test Club")
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
-        assert body =~ "No readings scheduled"
+        assert body =~ "Nothing on the schedule yet"
         :ok
       end)
 
@@ -983,10 +1009,10 @@ defmodule YonderbookClubs.Bot.RouterTest do
       club = create_club()
 
       for {cmd, expected} <- [
-        {"/suggest Piranesi", "private"},
-        {"/suggest", "DM"},
-        {"/remove", "DM"},
-        {"/help", "DM"}
+        {"/suggest Piranesi", "secret"},
+        {"/suggest", "DMs"},
+        {"/remove", "DMs"},
+        {"/help", "DMs"}
       ] do
         expect(YonderbookClubs.Signal.Mock, :send_message, fn _gid, msg ->
           assert msg =~ expected
@@ -1029,7 +1055,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
     test "/s with no text gives guidance" do
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "Suggest what?"
+        assert body =~ "What would you like to suggest?"
         :ok
       end)
 
@@ -1060,6 +1086,830 @@ defmodule YonderbookClubs.Bot.RouterTest do
   describe "malformed messages" do
     test "message with no groupInfo or sourceUuid returns :noop" do
       assert :noop = Router.handle_message(%{"message" => "hello"})
+    end
+  end
+
+  # --- Multi-club selection ---
+
+  describe "DM messages - club selection with #N" do
+    setup do
+      _club1 = create_club("group.abc123", "Near Wild Heaven")
+      _club2 = create_club("group.def456", "Witchy Mamas")
+      :ok
+    end
+
+    defp mock_list_two_clubs do
+      expect(YonderbookClubs.Signal.Mock, :list_groups, fn ->
+        {:ok, [
+          %{"id" => "group.abc123", "name" => "Near Wild Heaven"},
+          %{"id" => "group.def456", "name" => "Witchy Mamas"}
+        ]}
+      end)
+    end
+
+    test "suggestions #2 shows suggestions for the second club" do
+      mock_list_two_clubs()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "No suggestions yet"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/suggestions #2"))
+    end
+
+    test "suggestions 1 shows suggestions for the first club" do
+      mock_list_two_clubs()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "No suggestions yet"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/suggestions 1"))
+    end
+
+    test "remove #1 removes from the first club" do
+      mock_list_two_clubs()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "don't have any suggestions"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/remove #1"))
+    end
+
+    test "r #2 removes from the second club" do
+      mock_list_two_clubs()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "don't have any suggestions"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/r #2"))
+    end
+  end
+
+  describe "DM messages - conversational club selection" do
+    setup do
+      _club1 = create_club("group.abc123", "Near Wild Heaven")
+      _club2 = create_club("group.def456", "Witchy Mamas")
+      :ok
+    end
+
+    defp mock_list_two_clubs_twice do
+      expect(YonderbookClubs.Signal.Mock, :list_groups, 2, fn ->
+        {:ok, [
+          %{"id" => "group.abc123", "name" => "Near Wild Heaven"},
+          %{"id" => "group.def456", "name" => "Witchy Mamas"}
+        ]}
+      end)
+    end
+
+    test "replying with a number after multi-club prompt resumes the command" do
+      mock_list_two_clubs_twice()
+
+      # First: /suggestions triggers multi-club prompt
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Which one?"
+        assert body =~ "Near Wild Heaven"
+        assert body =~ "Witchy Mamas"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/suggestions"))
+
+      # Then: reply with just "2"
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "No suggestions yet"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("2"))
+    end
+
+    test "replying with #N after multi-club prompt resumes the command" do
+      mock_list_two_clubs_twice()
+
+      # First: /remove triggers multi-club prompt
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Which one?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/remove"))
+
+      # Then: reply with "#1"
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "don't have any suggestions"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("#1"))
+    end
+
+    test "replying with a number when no pending command falls through" do
+      # No prior multi-club prompt — "42" should be treated as unrecognized
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        # Should get help text since no suggestions exist for this user
+        assert body =~ "suggest"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("42"))
+    end
+  end
+
+  describe "DM messages - bare /suggest follow-up" do
+    test "bare /suggest stores pending, next message becomes the suggestion" do
+      club = create_club()
+
+      # First: bare /suggest prompts for text
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "What would you like to suggest?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/suggest"))
+
+      # Then: reply with the book
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
+        assert body =~ "Piranesi"
+        assert body =~ "Test Club"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("Piranesi by Susanna Clarke"))
+
+      suggestions = Suggestions.list_suggestions(club)
+      assert length(suggestions) == 1
+    end
+
+    test "bare /s also stores pending" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "What would you like to suggest?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/s"))
+
+      # Then: reply with the book
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
+        assert body =~ "Piranesi"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("Piranesi by Susanna Clarke"))
+    end
+  end
+
+  describe "group messages - conversational start vote" do
+    test "bare /start vote then number starts the vote" do
+      club = create_club()
+      add_suggestion(club, "Piranesi", "Susanna Clarke")
+      add_suggestion(club, "Babel", "RF Kuang")
+
+      # First: bare /start vote prompts for number
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "How many"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "/start vote"))
+
+      # Then: reply with just "1"
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", _body, _attachments -> :ok end)
+      expect(YonderbookClubs.Signal.Mock, :send_poll, fn "group.abc123", _question, _options -> {:ok, 123} end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "1"))
+
+      assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
+      assert %{success: 1} = Oban.drain_queue(queue: :default)
+    end
+
+    test "invalid budget then number starts the vote" do
+      club = create_club()
+      add_suggestion(club, "Piranesi", "Susanna Clarke")
+      add_suggestion(club, "Babel", "RF Kuang")
+
+      # First: invalid budget
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "between 1 and 50"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "/start vote abc"))
+
+      # Then: valid number
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", _body, _attachments -> :ok end)
+      expect(YonderbookClubs.Signal.Mock, :send_poll, fn "group.abc123", _question, _options -> {:ok, 123} end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "2"))
+
+      assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
+      assert %{success: 1} = Oban.drain_queue(queue: :default)
+    end
+
+    test "non-numeric reply after /start vote is ignored" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "How many"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "/start vote"))
+
+      # Reply with text, not a number — should be :noop
+      assert :noop = Router.handle_message(group_message("group.abc123", "hello"))
+    end
+  end
+
+  describe "group messages - conversational unschedule" do
+    test "bare /unschedule then title removes the reading" do
+      club = create_club()
+
+      YonderbookClubs.Readings.create_reading(club, %{
+        title: "Piranesi",
+        time_label: "January"
+      })
+
+      # First: bare /unschedule prompts for title
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Which book"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "/unschedule"))
+
+      # Then: reply with title
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Removed"
+        assert body =~ "Piranesi"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "Piranesi"))
+    end
+  end
+
+  describe "group messages - conversational schedule" do
+    test "schedule without 'for' then time saves the reading" do
+      _club = create_club()
+
+      # First: /schedule Piranesi — missing "for"
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "For when?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "/schedule Piranesi"))
+
+      # Then: reply with the time
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "on the schedule"
+        assert body =~ "Piranesi"
+        assert body =~ "January"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "January"))
+    end
+
+    test "schedule with author but no 'for' then time saves with author" do
+      _club = create_club()
+
+      # First: /schedule Piranesi by Susanna Clarke — missing "for"
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "For when?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(
+        group_message("group.abc123", "/schedule Piranesi by Susanna Clarke")
+      )
+
+      # Then: reply with the time
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "on the schedule"
+        assert body =~ "Piranesi by Susanna Clarke"
+        assert body =~ "March"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "March"))
+    end
+  end
+
+  describe "event-driven club deactivation" do
+    test "handle_group_quit deactivates a club" do
+      club = create_club("group.removed", "Removed Club")
+      assert club.active == true
+
+      # Simulate the bot being removed from the group
+      assert :ok = Router.handle_group_quit("group.removed")
+
+      # The club should now be inactive
+      updated = YonderbookClubs.Repo.get!(YonderbookClubs.Clubs.Club, club.id)
+      assert updated.active == false
+      assert updated.voting_active == false
+    end
+
+    test "handle_group_quit with unknown group is a no-op" do
+      assert :ok = Router.handle_group_quit("group.unknown")
+    end
+  end
+
+  describe "group pending commands - sender scoping" do
+    test "different sender's reply does not consume another sender's pending" do
+      _club = create_club()
+
+      # Alice says /start vote
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "How many"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(
+        group_message("group.abc123", "/start vote", sender: "alice-uuid")
+      )
+
+      # Bob says "2" — should NOT start a vote (it's Alice's pending, not Bob's)
+      assert :noop = Router.handle_message(
+        group_message("group.abc123", "2", sender: "bob-uuid")
+      )
+    end
+
+    test "same sender's reply does consume their pending" do
+      club = create_club()
+      add_suggestion(club, "Piranesi", "Susanna Clarke")
+      add_suggestion(club, "Babel", "RF Kuang")
+
+      # Alice says /start vote
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "How many"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(
+        group_message("group.abc123", "/start vote", sender: "alice-uuid")
+      )
+
+      # Alice says "1" — should start the vote
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", _body, _attachments -> :ok end)
+      expect(YonderbookClubs.Signal.Mock, :send_poll, fn "group.abc123", _q, _o -> {:ok, 123} end)
+
+      assert :ok = Router.handle_message(
+        group_message("group.abc123", "1", sender: "alice-uuid")
+      )
+
+      assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
+      assert %{success: 1} = Oban.drain_queue(queue: :default)
+    end
+  end
+
+  describe "DM messages - sender membership filtering" do
+    test "only shows clubs the sender is a member of" do
+      _club1 = create_club("group.abc123", "Alice's Club")
+      _club2 = create_club("group.def456", "Bob's Club")
+
+      # list_groups returns both, but with member lists
+      expect(YonderbookClubs.Signal.Mock, :list_groups, fn ->
+        {:ok, [
+          %{"id" => "group.abc123", "name" => "Alice's Club", "members" => ["uuid-sender"]},
+          %{"id" => "group.def456", "name" => "Bob's Club", "members" => ["uuid-bob"]}
+        ]}
+      end)
+
+      # Sender is only in club 1 — should resolve directly without multi-club prompt
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "No suggestions yet"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/suggestions"))
+    end
+
+    test "sender in no groups gets no_clubs error" do
+      _club = create_club("group.abc123", "Not Your Club")
+
+      expect(YonderbookClubs.Signal.Mock, :list_groups, fn ->
+        {:ok, [
+          %{"id" => "group.abc123", "name" => "Not Your Club", "members" => ["uuid-other"]}
+        ]}
+      end)
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "not in any"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/suggestions"))
+    end
+  end
+
+  describe "club list ordering" do
+    test "clubs are listed in stable alphabetical order" do
+      _club_z = create_club("group.zzz", "Zebra Club")
+      _club_a = create_club("group.aaa", "Alpha Club")
+      _club_m = create_club("group.mmm", "Mango Club")
+
+      expect(YonderbookClubs.Signal.Mock, :list_groups, fn ->
+        {:ok, [
+          %{"id" => "group.zzz", "name" => "Zebra Club"},
+          %{"id" => "group.aaa", "name" => "Alpha Club"},
+          %{"id" => "group.mmm", "name" => "Mango Club"}
+        ]}
+      end)
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Which one?"
+        # Verify alphabetical ordering
+        alpha_pos = :binary.match(body, "Alpha Club") |> elem(0)
+        mango_pos = :binary.match(body, "Mango Club") |> elem(0)
+        zebra_pos = :binary.match(body, "Zebra Club") |> elem(0)
+        assert alpha_pos < mango_pos
+        assert mango_pos < zebra_pos
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/suggestions"))
+    end
+  end
+
+  # --- AI Confirmation Flow ---
+
+  describe "DM messages - AI confirmation flow" do
+    test "freetext suggestion failure offers AI, yes triggers AI search" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      # First: suggest gibberish — Open Library won't find it
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Want me to use AI to look it up?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest xyzzy flurbo"))
+
+      # Then: reply "yes" — triggers AI search
+      # AI search will also fail for gibberish, so we get the final error
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "still couldn't find"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("yes"))
+    end
+
+    test "freetext suggestion failure offers AI, no declines gracefully" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Want me to use AI to look it up?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest xyzzy flurbo"))
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "No worries"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("no"))
+    end
+
+    test "freetext suggestion failure offers AI, y works as yes" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Want me to use AI to look it up?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest xyzzy flurbo"))
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "still couldn't find"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("y"))
+    end
+
+    test "freetext suggestion failure offers AI, n works as no" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Want me to use AI to look it up?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest xyzzy flurbo"))
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "No worries"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("n"))
+    end
+
+    test "freetext suggestion failure offers AI, unrelated reply falls through" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Want me to use AI to look it up?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest xyzzy flurbo"))
+
+      # Reply with something other than yes/no — should fall through to fallback
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        # Falls through to handle_fallback (new user → help text)
+        assert body =~ "suggest" or body =~ "help"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("maybe"))
+    end
+
+    test "title+author suggestion failure offers AI confirmation" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Want me to use AI to look it up?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest Xyzzybook by Flurbo McFake"))
+    end
+  end
+
+  # --- ISBN Suggestion Flow ---
+
+  describe "DM messages - ISBN suggestion" do
+    test "valid ISBN-13 that matches finds the book (integration)" do
+      club = create_club()
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
+        assert body =~ "Piranesi"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest 9781526622426"))
+
+      suggestions = Suggestions.list_suggestions(club)
+      assert length(suggestions) == 1
+    end
+
+    test "ISBN that doesn't match gives error" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "couldn't find that ISBN"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest 9799999999999"))
+    end
+  end
+
+  # --- Suggest ai: Prefix ---
+
+  describe "DM messages - suggest ai: prefix" do
+    test "suggest ai: without API key returns error" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "still couldn't find"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest ai: that book about the infinite house"))
+    end
+  end
+
+  # --- Duplicate Suggestion ---
+
+  describe "DM messages - duplicate suggestion" do
+    test "suggesting a book already on the list says so" do
+      club = create_club()
+      # Use the real Open Library work ID for Piranesi
+      add_suggestion(club, "Piranesi", "Susanna Clarke", work_id: "OL20893680W")
+
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Good taste"
+        assert body =~ "already on the list"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest Piranesi by Susanna Clarke"))
+    end
+  end
+
+  # --- Group Redirect from DM ---
+
+  describe "DM messages - group command redirects" do
+    test "start vote in DM redirects to group" do
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "group chat command"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("start vote"))
+    end
+
+    test "close vote in DM redirects to group" do
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "group chat command" or body =~ "DMs"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("close vote"))
+    end
+
+    test "unschedule in DM redirects to group" do
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "group chat command" or body =~ "DMs"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("unschedule"))
+    end
+  end
+
+  # --- Group DM Redirects ---
+
+  describe "group messages - DM command redirects" do
+    test "suggest in group redirects to DM" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "DMs" or body =~ "direct message"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "suggest"))
+    end
+
+    test "suggest with text in group redirects to DM" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "secret" or body =~ "DM"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "suggest Piranesi by Susanna Clarke"))
+    end
+
+    test "help in group redirects to DM" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "DMs" or body =~ "direct message"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(group_message("group.abc123", "help"))
+    end
+  end
+
+  # --- Edge Cases ---
+
+  describe "edge cases" do
+    test "suggest with only whitespace after prefix gives guidance" do
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "What would you like to suggest?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest    "))
+    end
+
+    test "commands work without leading slash" do
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Hey there" or body =~ "suggest"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("help"))
+    end
+
+    test "commands are case insensitive" do
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Hey there" or body =~ "suggest"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("HELP"))
+    end
+
+    test "close vote with no club is noop" do
+      assert :noop = Router.handle_message(group_message("group.nonexistent", "close vote"))
+    end
+
+    test "results with no club is noop" do
+      assert :noop = Router.handle_message(group_message("group.nonexistent", "results"))
+    end
+
+    test "message with no groupInfo or sourceUuid is ignored" do
+      msg = %{"message" => "hello"}
+      assert :noop = Router.handle_message(msg)
+    end
+
+    test "schedule limit reached gives friendly message" do
+      club = create_club()
+
+      for i <- 1..50 do
+        YonderbookClubs.Readings.create_reading(club, %{
+          title: "Book #{i}",
+          time_label: "Month #{i}"
+        })
+      end
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "full"
+        assert body =~ "50"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(
+        group_message("group.abc123", "schedule Another Book for January")
+      )
+    end
+  end
+
+  # --- Unschedule with sender scoping ---
+
+  describe "group messages - unschedule sender scoping" do
+    test "bare /unschedule with sender_uuid stores sender-scoped pending" do
+      club = create_club()
+
+      YonderbookClubs.Readings.create_reading(club, %{
+        title: "Piranesi",
+        time_label: "January"
+      })
+
+      # Alice says /unschedule
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Which book"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(
+        group_message("group.abc123", "/unschedule", sender: "alice-uuid")
+      )
+
+      # Bob replies — should NOT consume Alice's pending
+      assert :noop = Router.handle_message(
+        group_message("group.abc123", "Piranesi", sender: "bob-uuid")
+      )
+
+      # Alice replies — should consume her pending
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Removed"
+        assert body =~ "Piranesi"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(
+        group_message("group.abc123", "Piranesi", sender: "alice-uuid")
+      )
+    end
+
+    test "/unschedule with trailing whitespace stores sender-scoped pending" do
+      _club = create_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
+        assert body =~ "Which book"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(
+        group_message("group.abc123", "/unschedule   ", sender: "alice-uuid")
+      )
     end
   end
 end

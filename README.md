@@ -57,11 +57,69 @@ The `ai:` prefix is the only path that uses AI — it's explicitly opt-in.
 
 ### Multi-Club Support
 
-If you're in multiple book clubs, the bot asks which club you mean. Prefix with a club number to skip the prompt:
+If you're in multiple book clubs, the bot asks which club you mean. You can either:
 
+**Reply with the number** when prompted:
+```
+Bot: Which club? Reply with the number:
+     1) Near Wild Heaven Book Club
+     2) Witchy Mamas Book Club
+You: 2
+```
+
+**Or prefix any DM command with `#N`** to skip the prompt:
 ```
 /suggest #2 Piranesi by Susanna Clarke
+/suggestions #1
+/remove #2
+/r #1
 ```
+
+### Conversational Follow-ups
+
+The bot remembers incomplete commands and lets you finish them in the next message:
+
+**Suggestions (DM):**
+```
+You: /suggest
+Bot: Suggest what? Send me a title, like "Piranesi by Susanna Clarke".
+You: Piranesi by Susanna Clarke
+Bot: Added Piranesi by Susanna Clarke! ...
+```
+
+**Start vote (group):**
+```
+You: /start vote
+Bot: How many books should win? Reply with a number.
+You: 2
+Bot: (starts vote with budget 2)
+```
+
+**Schedule (group):**
+```
+You: /schedule Piranesi by Susanna Clarke
+Bot: For when? Reply with the time (e.g., January, March–April).
+You: January
+Bot: Added to the schedule: Piranesi by Susanna Clarke for January.
+```
+
+**Unschedule (group):**
+```
+You: /unschedule
+Bot: Which book? Reply with the title.
+You: Piranesi
+Bot: Removed Piranesi from the schedule.
+```
+
+**AI confirmation (DM):**
+```
+You: /suggest the infinite house book
+Bot: I couldn't find that one. Want me to use AI to look it up? Reply yes or no.
+You: yes
+Bot: Nice! Added Piranesi by Susanna Clarke to Test Club's list.
+```
+
+Follow-up replies expire after 5 minutes.
 
 ## Setup
 
@@ -111,25 +169,29 @@ mix run --no-halt
 
 ### Stack
 
-- **Elixir** — plain OTP app (no Phoenix)
+- **Elixir** — plain OTP app (no Phoenix), `rest_for_one` supervision
 - **PostgreSQL** via Ecto
 - **signal-cli** — JSON-RPC over TCP for Signal integration
 - **Open Library API** — book metadata, covers, descriptions
 - **Claude API** — AI-assisted suggestion extraction (opt-in only)
-- **Oban** — background job processing (vote sending)
-- **ETS** — in-memory club cache
+- **Oban** — background job processing (vote sending with retry)
+- **ETS** — in-memory club cache + pending command state with TTL
+- **Sentry** — error tracking with user context
+- **Telemetry** — observability for Signal RPC, book search, and job execution
 
 ### Context Modules
 
 ```
-YonderbookClubs.Clubs        — Club CRUD, voting state, onboarding
-YonderbookClubs.Suggestions  — Suggestion lifecycle, deduplication
-YonderbookClubs.Polls        — Poll creation, vote recording, results
-YonderbookClubs.Readings     — Reading schedule management
-YonderbookClubs.Books        — Open Library + AI book search
-YonderbookClubs.Bot.Router   — Inbound message routing
-YonderbookClubs.Bot.Formatter — Outbound message formatting
-YonderbookClubs.Signal.CLI   — signal-cli TCP client (GenServer)
+YonderbookClubs.Clubs            — Club CRUD, atomic voting state, cache
+YonderbookClubs.Suggestions      — Suggestion lifecycle, deduplication, archival
+YonderbookClubs.Polls            — Poll creation (batch), vote recording, results
+YonderbookClubs.Readings         — Reading schedule (row-locked limit enforcement)
+YonderbookClubs.Books            — Open Library + AI book search
+YonderbookClubs.Bot.Router       — Inbound message routing, group quit handling
+YonderbookClubs.Bot.Formatter    — Outbound message formatting
+YonderbookClubs.Bot.PendingCommands — ETS-backed conversational state with TTL
+YonderbookClubs.Workers.SendVoteWorker — Oban worker for vote delivery
+YonderbookClubs.Signal.CLI       — signal-cli TCP client (GenServer)
 ```
 
 ### Message Flow
@@ -140,7 +202,7 @@ Signal → signal-cli (TCP) → Signal.CLI GenServer → Bot.Router
   → no groupInfo?  → DMCommands.handle/3
 ```
 
-Group commands manage voting and scheduling. DM commands handle suggestions and book lookups. The bot stays silent in groups for unrecognized messages.
+Group commands manage voting and scheduling. DM commands handle suggestions and book lookups. The bot stays silent in groups for unrecognized messages. Group quit/kick events trigger automatic club deactivation.
 
 ### Data Model
 
@@ -156,7 +218,8 @@ Group commands manage voting and scheduling. DM commands handle suggestions and 
 - **Work-based deduplication** — suggestions are deduplicated on Open Library work ID, so different editions of the same book collapse
 - **Honor-system voting** — Signal polls don't enforce vote limits, so the budget is set by convention in the poll question
 - **Clean slate** — suggestions are archived after each vote cycle, keeping the pool current
-- **AI transparency** — the `ai:` prefix is the only path that touches Claude. No silent AI usage anywhere
+- **AI transparency** — the `ai:` prefix is the only path that touches Claude. When a search fails, the bot explicitly asks before using AI
+- **Concurrency safety** — voting state changes use atomic DB operations; reading limits use row-level locks
 
 ## Testing
 

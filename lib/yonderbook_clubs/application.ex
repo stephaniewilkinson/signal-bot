@@ -11,10 +11,11 @@ defmodule YonderbookClubs.Application do
         YonderbookClubs.Repo,
         {Oban, Application.fetch_env!(:yonderbook_clubs, Oban)},
         YonderbookClubs.Clubs.Cache,
+        YonderbookClubs.Bot.PendingCommands,
         {Task.Supervisor, name: YonderbookClubs.TaskSupervisor}
       ] ++ signal_children()
 
-    opts = [strategy: :one_for_one, name: YonderbookClubs.Supervisor]
+    opts = [strategy: :rest_for_one, name: YonderbookClubs.Supervisor]
     Supervisor.start_link(children, opts)
   end
 

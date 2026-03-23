@@ -9,6 +9,9 @@ defmodule YonderbookClubs.Workers.SendVoteWorker do
 
   use Oban.Worker, queue: :default, max_attempts: 3
 
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(2)
+
   alias YonderbookClubs.Bot.Formatter
   alias YonderbookClubs.Bot.Router.Helpers
   alias YonderbookClubs.Clubs
@@ -33,7 +36,7 @@ defmodule YonderbookClubs.Workers.SendVoteWorker do
 
     signal = YonderbookClubs.Signal.impl()
     club = Clubs.get_club!(club_id)
-    suggestions = Enum.map(suggestion_ids, &Suggestions.get_suggestion!/1)
+    suggestions = Suggestions.get_suggestions_by_ids(suggestion_ids)
 
     chunks = Enum.chunk_every(suggestions, @max_poll_options)
     total_polls = length(chunks)

@@ -27,7 +27,8 @@ defmodule YonderbookClubs.Bot.Router do
     command = text |> String.downcase() |> String.split(" ") |> Enum.take(2) |> Enum.join(" ")
     Logger.metadata(group_id: group_id, command: command)
     set_sentry_context(%{group_id: group_id, command: command, message_type: "group"})
-    GroupCommands.handle(group_id, text)
+    sender_uuid = msg["sourceUuid"]
+    GroupCommands.handle(group_id, text, sender_uuid)
   end
 
   def handle_message(%{"sourceUuid" => sender_uuid} = msg) do
@@ -70,4 +71,20 @@ defmodule YonderbookClubs.Bot.Router do
   end
 
   def handle_poll_vote(_msg), do: :noop
+
+  @doc """
+  Handles a group quit/kick event — deactivates the club when the bot is removed.
+  """
+  @spec handle_group_quit(String.t()) :: :ok
+  def handle_group_quit(group_id) do
+    Logger.info("Bot removed from group #{group_id}, deactivating club")
+
+    case YonderbookClubs.Clubs.get_club_by_group_id(group_id) do
+      nil -> :ok
+      club ->
+        YonderbookClubs.Clubs.set_voting_active(club, false)
+        YonderbookClubs.Clubs.deactivate_club(club)
+        :ok
+    end
+  end
 end

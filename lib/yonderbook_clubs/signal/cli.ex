@@ -347,6 +347,12 @@ defmodule YonderbookClubs.Signal.CLI do
           YonderbookClubs.Bot.Router.handle_message(msg)
         end)
 
+      %{"dataMessage" => %{"groupInfo" => %{"groupId" => group_id, "type" => type}}}
+      when type in ["QUIT", "KICKED"] ->
+        Task.Supervisor.start_child(YonderbookClubs.TaskSupervisor, fn ->
+          YonderbookClubs.Bot.Router.handle_group_quit(group_id)
+        end)
+
       _ ->
         # Typing indicators, read receipts, etc. — ignore
         :ok
@@ -372,7 +378,13 @@ defmodule YonderbookClubs.Signal.CLI do
 
   defp call_rpc(method, params) do
     start_time = System.monotonic_time()
-    result = GenServer.call(__MODULE__, {:rpc, method, params}, @rpc_timeout_ms)
+
+    result =
+      try do
+        GenServer.call(__MODULE__, {:rpc, method, params}, @rpc_timeout_ms)
+      catch
+        :exit, {:timeout, _} -> {:error, :rpc_timeout}
+      end
 
     :telemetry.execute(
       [:yonderbook_clubs, :signal, :rpc],

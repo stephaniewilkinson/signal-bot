@@ -22,15 +22,7 @@ defmodule YonderbookClubs.Readings do
         |> Repo.update()
 
       nil ->
-        if count_readings(club) >= @max_readings_per_club do
-          {:error, :limit_reached}
-        else
-          attrs = Map.put(attrs, :club_id, club.id)
-
-          %Reading{}
-          |> Reading.changeset(attrs)
-          |> Repo.insert()
-        end
+        insert_reading_with_limit(club, attrs)
     end
   end
 
@@ -50,6 +42,25 @@ defmodule YonderbookClubs.Readings do
       nil -> {:error, :not_found}
       reading -> Repo.delete(reading)
     end
+  end
+
+  defp insert_reading_with_limit(club, attrs) do
+    Repo.transaction(fn ->
+      # Lock the club row to serialize concurrent inserts
+      from(c in YonderbookClubs.Clubs.Club, where: c.id == ^club.id, lock: "FOR UPDATE")
+      |> Repo.one!()
+
+      if count_readings(club) >= @max_readings_per_club do
+        Repo.rollback(:limit_reached)
+      else
+        attrs = Map.put(attrs, :club_id, club.id)
+
+        case %Reading{} |> Reading.changeset(attrs) |> Repo.insert() do
+          {:ok, reading} -> reading
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
+      end
+    end)
   end
 
   defp find_by_title(club, downcased) do

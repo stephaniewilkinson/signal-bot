@@ -42,6 +42,8 @@ defmodule YonderbookClubs.Telemetry do
       duration_ms: duration_ms,
       result: metadata.result
     )
+  rescue
+    e -> Logger.error("Telemetry handler crashed (signal_rpc): #{Exception.message(e)}")
   end
 
   def handle_event([:yonderbook_clubs, :books, :search], measurements, metadata, _config) do
@@ -52,6 +54,8 @@ defmodule YonderbookClubs.Telemetry do
       duration_ms: duration_ms,
       result: metadata.result
     )
+  rescue
+    e -> Logger.error("Telemetry handler crashed (books_search): #{Exception.message(e)}")
   end
 
   def handle_event([:oban, :job, :exception], _measurements, metadata, _config) do
@@ -62,5 +66,7 @@ defmodule YonderbookClubs.Telemetry do
       tags: %{worker: job.worker, queue: job.queue},
       extra: %{attempt: job.attempt, max_attempts: job.max_attempts, args: job.args}
     )
+  rescue
+    e -> Logger.error("Telemetry handler crashed (oban_exception): #{Exception.message(e)}")
   end
 end

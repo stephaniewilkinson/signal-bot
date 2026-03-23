@@ -4,6 +4,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
   """
 
   alias YonderbookClubs.Bot.Formatter
+  alias YonderbookClubs.Bot.PendingCommands
   alias YonderbookClubs.Bot.Router.Helpers
   alias YonderbookClubs.Clubs
   alias YonderbookClubs.Readings
@@ -17,9 +18,9 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
   @max_input_length 500
 
   @fallback_messages [
-    "I didn't catch that. Say /help for help.",
-    "Not sure what you mean. Try /help.",
-    "I don't recognize that command. /help has the full list."
+    "Hmm, I'm not sure what you mean. Try /help to see what I can do!",
+    "I didn't quite get that — say /help if you need a hand!",
+    "Not sure I follow! /help has the full list of things I can do."
   ]
 
   @spec handle(String.t(), String.t(), String.t()) :: :ok | :noop | {:error, atom()}
@@ -35,8 +36,17 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       cmd when cmd in ["remove", "r"] ->
         handle_remove(sender_uuid)
 
+      "remove " <> rest ->
+        handle_remove(sender_uuid, parse_club_number(rest))
+
+      "r " <> rest ->
+        handle_remove(sender_uuid, parse_club_number(rest))
+
       "suggestions" ->
         handle_suggestions(sender_uuid)
+
+      "suggestions " <> rest ->
+        handle_suggestions(sender_uuid, parse_club_number(rest))
 
       "schedule" ->
         handle_show_schedule(sender_uuid)
@@ -49,7 +59,8 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         handle_suggest(sender_uuid, sender_name, expanded)
 
       cmd when cmd in ["suggest", "s"] ->
-        signal.send_message(sender_uuid, "Suggest what? Try: /suggest Piranesi by Susanna Clarke")
+        PendingCommands.store(sender_uuid, {:suggest_text, sender_name})
+        signal.send_message(sender_uuid, "What would you like to suggest? Send me a title, like \"Piranesi by Susanna Clarke\".")
         :ok
 
       cmd when cmd in ["start vote", "start poll", "close vote", "close poll",
@@ -70,8 +81,14 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         :ok
 
       _ ->
-        handle_fallback(signal, sender_uuid, String.downcase(stripped))
-        :ok
+        case maybe_resume_pending(sender_uuid, sender_name, stripped) do
+          :no_pending ->
+            handle_fallback(signal, sender_uuid, String.downcase(stripped))
+            :ok
+
+          result ->
+            result
+        end
     end
   end
 
@@ -84,7 +101,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
     signal.send_message(
       sender_uuid,
-      "That command works in #{club_hint}, not here. Say /help to see what you can do in DMs."
+      "That one's a group chat command! Head over to #{club_hint} to use it. Say /help to see what works here."
     )
   end
 
@@ -102,28 +119,28 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
     end
   end
 
-  defp handle_remove(sender_uuid) do
-    with_club(sender_uuid, fn club ->
+  defp handle_remove(sender_uuid, club_number \\ nil) do
+    with_club(sender_uuid, club_number, :remove, fn club ->
       signal = YonderbookClubs.Signal.impl()
 
       case Suggestions.remove_latest_suggestion(club.id, sender_uuid) do
         {:ok, suggestion} ->
           signal.send_message(
             sender_uuid,
-            "Removed #{suggestion.title} by #{suggestion.author}."
+            "Done! Removed #{suggestion.title} by #{suggestion.author}."
           )
 
           :ok
 
         {:error, :not_found} ->
-          signal.send_message(sender_uuid, "You don't have any suggestions to remove.")
+          signal.send_message(sender_uuid, "You don't have any suggestions to remove right now.")
           :ok
       end
     end)
   end
 
-  defp handle_suggestions(sender_uuid) do
-    with_club(sender_uuid, fn club ->
+  defp handle_suggestions(sender_uuid, club_number \\ nil) do
+    with_club(sender_uuid, club_number, :suggestions, fn club ->
       suggestions = Suggestions.list_suggestions(club)
       YonderbookClubs.Signal.impl().send_message(sender_uuid, Formatter.format_suggestions_list(suggestions))
       :ok
@@ -131,7 +148,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
   end
 
   defp handle_show_schedule(sender_uuid) do
-    with_club(sender_uuid, fn club ->
+    with_club(sender_uuid, nil, :schedule, fn club ->
       readings = Readings.list_readings(club)
       YonderbookClubs.Signal.impl().send_message(sender_uuid, Formatter.format_schedule(readings))
       :ok
@@ -145,7 +162,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
     # Check for #N club prefix
     {club_number, suggestion_text} = extract_club_prefix(suggestion_text)
 
-    with_club(sender_uuid, club_number, fn club ->
+    with_club(sender_uuid, club_number, {:suggest, sender_name, suggestion_text}, fn club ->
       process_suggestion(sender_uuid, sender_name, club, suggestion_text)
     end)
   end
@@ -167,14 +184,14 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       text == "" ->
         YonderbookClubs.Signal.impl().send_message(
           sender_uuid,
-          "Suggest what? Try: /suggest Piranesi by Susanna Clarke"
+          "What would you like to suggest? Try something like: /suggest Piranesi by Susanna Clarke"
         )
         :ok
 
       String.length(text) > @max_input_length ->
         YonderbookClubs.Signal.impl().send_message(
           sender_uuid,
-          "That's too long. Try just the title and author."
+          "That's a bit long! Try just the title and author."
         )
         :ok
 
@@ -207,9 +224,10 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         save_suggestion(sender_uuid, sender_name, club, book_data)
 
       {:error, _reason} ->
+        PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club.id, text})
         signal.send_message(
           sender_uuid,
-          "Couldn't find that book. Try:\n/suggest Title by Author\n/suggest Author, Title"
+          "I couldn't find that one. Want me to use AI to look it up? Reply yes or no."
         )
         :ok
     end
@@ -227,12 +245,14 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       {:ok, book_data} ->
         save_suggestion(sender_uuid, sender_name, club, book_data)
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        Sentry.capture_message("AI book search failed",
+          extra: %{sender_uuid: sender_uuid, query: text, reason: inspect(reason)}
+        )
         signal.send_message(
           sender_uuid,
-          "Couldn't find that book. Check the spelling and try again."
+          "I still couldn't find that one. Try /suggest Title by Author instead!"
         )
-
         :ok
     end
   end
@@ -247,7 +267,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       {:error, _reason} ->
         signal.send_message(
           sender_uuid,
-          "Couldn't find that ISBN. Check the number and try again."
+          "I couldn't find that ISBN. Double-check the number and try again!"
         )
         :ok
     end
@@ -261,11 +281,11 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         save_suggestion(sender_uuid, sender_name, club, book_data)
 
       {:error, _reason} ->
+        PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club.id, "#{title} by #{author}"})
         signal.send_message(
           sender_uuid,
-          "Couldn't find that book. Check the spelling and try again."
+          "I couldn't find that one. Want me to use AI to look it up? Reply yes or no."
         )
-
         :ok
     end
   end
@@ -280,7 +300,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
     case Suggestions.create_suggestion(club, attrs) do
       {:ok, :duplicate} ->
-        signal.send_message(sender_uuid, "That one's already on the list.")
+        signal.send_message(sender_uuid, "Good taste! That one's already on the list.")
         :ok
 
       {:ok, suggestion} ->
@@ -292,17 +312,18 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
         :ok
 
-      {:error, _changeset} ->
-        signal.send_message(sender_uuid, "Something went wrong. Try again in a minute.")
+      {:error, changeset} ->
+        Sentry.capture_message("Suggestion save failed",
+          extra: %{sender_uuid: sender_uuid, changeset: inspect(changeset)}
+        )
+        signal.send_message(sender_uuid, "Oops, something went wrong! Give it another try in a minute.")
         :ok
     end
   end
 
   # --- Club Resolution ---
 
-  defp with_club(sender_uuid, fun), do: with_club(sender_uuid, nil, fun)
-
-  defp with_club(sender_uuid, club_number, fun) do
+  defp with_club(sender_uuid, club_number, pending_cmd, fun) do
     signal = YonderbookClubs.Signal.impl()
 
     case resolve_club(sender_uuid, club_number) do
@@ -310,41 +331,57 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         fun.(club)
 
       {:error, :no_clubs} ->
-        signal.send_message(sender_uuid, "I'm not in any of your group chats yet. Add me to a group first.")
+        signal.send_message(sender_uuid, "I'm not in any of your group chats yet! Add me to a group first, then you can start suggesting books.")
         :ok
 
       {:error, :signal_unavailable} ->
-        signal.send_message(sender_uuid, "Something went wrong. Try again in a minute.")
+        Sentry.capture_message("Signal unavailable during club resolution",
+          extra: %{sender_uuid: sender_uuid}
+        )
+        signal.send_message(sender_uuid, "Oops, something went wrong! Give it another try in a minute.")
         :ok
 
       {:error, :multiple_clubs, clubs} ->
+        if pending_cmd, do: PendingCommands.store(sender_uuid, pending_cmd)
         signal.send_message(sender_uuid, Formatter.format_club_list(clubs))
         :ok
 
       {:error, :invalid_club_number} ->
-        signal.send_message(sender_uuid, "That club number doesn't exist. Say \"suggest\" to see the list.")
+        signal.send_message(sender_uuid, "That club number doesn't exist! Say /suggest to see the list.")
         :ok
     end
   end
 
-  defp resolve_club(_sender_uuid, club_number) do
+  defp resolve_club(sender_uuid, club_number) do
     case YonderbookClubs.Signal.impl().list_groups() do
       {:ok, groups} when groups != [] ->
-        group_ids = Enum.map(groups, & &1["id"])
-        existing = Clubs.get_clubs_by_group_ids(group_ids)
-        existing_ids = MapSet.new(existing, & &1.signal_group_id)
+        # Only show groups the sender is actually a member of
+        sender_groups = Enum.filter(groups, fn g ->
+          members = g["members"] || []
+          members == [] or sender_uuid in members
+        end)
 
-        new_clubs =
-          groups
-          |> Enum.reject(fn g -> MapSet.member?(existing_ids, g["id"]) end)
-          |> Enum.map(fn g ->
-            {:ok, club} = Clubs.get_or_create_club(g["id"], g["name"] || "Book Club")
-            Clubs.Cache.put(g["id"], club)
-            club
-          end)
+        case sender_groups do
+          [] ->
+            {:error, :no_clubs}
 
-        clubs = existing ++ new_clubs
-        pick_club(clubs, club_number)
+          _ ->
+            sender_group_ids = Enum.map(sender_groups, & &1["id"])
+            existing = Clubs.get_clubs_by_group_ids(sender_group_ids)
+            existing_ids = MapSet.new(existing, & &1.signal_group_id)
+
+            new_clubs =
+              sender_groups
+              |> Enum.reject(fn g -> MapSet.member?(existing_ids, g["id"]) end)
+              |> Enum.map(fn g ->
+                {:ok, club} = Clubs.get_or_create_club(g["id"], g["name"] || "Book Club")
+                Clubs.Cache.put(g["id"], club)
+                club
+              end)
+
+            clubs = existing ++ new_clubs
+            pick_club(clubs, club_number)
+        end
 
       {:ok, []} ->
         {:error, :no_clubs}
@@ -364,6 +401,80 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       {:ok, Enum.at(clubs, n - 1)}
     else
       {:error, :invalid_club_number}
+    end
+  end
+
+  defp maybe_resume_pending(sender_uuid, _sender_name, text) do
+    case PendingCommands.pop(sender_uuid) do
+      :miss ->
+        :no_pending
+
+      :expired ->
+        :no_pending
+
+      {:ok, {:suggest_text, sender_name}} ->
+        # Bare /suggest was sent; treat this entire message as the suggestion
+        handle_suggest(sender_uuid, sender_name, "suggest " <> String.trim(text))
+
+      {:ok, {:ai_confirm, sender_name, club_id, original_text}} ->
+        handle_ai_confirm(sender_uuid, sender_name, club_id, original_text, text)
+
+      {:ok, pending_cmd} ->
+        # All other pending commands expect a club number
+        case parse_club_number(String.trim(text)) do
+          n when is_integer(n) -> dispatch_pending(sender_uuid, pending_cmd, n)
+          nil -> :no_pending
+        end
+    end
+  end
+
+  defp handle_ai_confirm(sender_uuid, sender_name, club_id, original_text, reply) do
+    case String.downcase(String.trim(reply)) do
+      yes when yes in ["yes", "y"] ->
+        club = Clubs.get_club!(club_id)
+        handle_ai_suggestion(sender_uuid, sender_name, club, original_text)
+
+      no when no in ["no", "n"] ->
+        YonderbookClubs.Signal.impl().send_message(
+          sender_uuid,
+          "No worries! Try /suggest Title by Author instead."
+        )
+        :ok
+
+      _ ->
+        :no_pending
+    end
+  end
+
+  defp dispatch_pending(sender_uuid, :remove, n), do: handle_remove(sender_uuid, n)
+  defp dispatch_pending(sender_uuid, :suggestions, n), do: handle_suggestions(sender_uuid, n)
+  defp dispatch_pending(sender_uuid, :schedule, n), do: handle_show_schedule_with_club(sender_uuid, n)
+  defp dispatch_pending(sender_uuid, {:suggest, name, text}, n), do: handle_suggest_with_club(sender_uuid, name, text, n)
+
+  defp handle_suggest_with_club(sender_uuid, sender_name, suggestion_text, club_number) do
+    with_club(sender_uuid, club_number, {:suggest, sender_name, suggestion_text}, fn club ->
+      process_suggestion(sender_uuid, sender_name, club, suggestion_text)
+    end)
+  end
+
+  defp handle_show_schedule_with_club(sender_uuid, club_number) do
+    with_club(sender_uuid, club_number, :schedule, fn club ->
+      readings = Readings.list_readings(club)
+      YonderbookClubs.Signal.impl().send_message(sender_uuid, Formatter.format_schedule(readings))
+      :ok
+    end)
+  end
+
+  defp parse_club_number(text) do
+    trimmed = String.trim(text)
+
+    case Regex.run(~r/^#?(\d+)$/, trimmed) do
+      [_, n_str] ->
+        {n, ""} = Integer.parse(n_str)
+        n
+
+      nil ->
+        nil
     end
   end
 end

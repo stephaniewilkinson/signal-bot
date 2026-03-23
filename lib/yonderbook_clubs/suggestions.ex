@@ -62,6 +62,22 @@ defmodule YonderbookClubs.Suggestions do
   end
 
   @doc """
+  Gets suggestions by a list of IDs in a single query, preserving the input order.
+  """
+  @spec get_suggestions_by_ids([Ecto.UUID.t()]) :: [Suggestion.t()]
+  def get_suggestions_by_ids([]), do: []
+
+  def get_suggestions_by_ids(ids) do
+    suggestions =
+      Suggestion
+      |> where([s], s.id in ^ids)
+      |> Repo.all()
+
+    id_map = Map.new(suggestions, &{&1.id, &1})
+    Enum.map(ids, &Map.fetch!(id_map, &1))
+  end
+
+  @doc """
   Returns all suggestions for a club, ordered by inserted_at ascending.
   """
   @spec list_suggestions(Club.t()) :: [Suggestion.t()]

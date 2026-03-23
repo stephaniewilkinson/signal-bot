@@ -4,6 +4,7 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
   """
 
   alias YonderbookClubs.Bot.Formatter
+  alias YonderbookClubs.Bot.PendingCommands
   alias YonderbookClubs.Bot.Router.Helpers
   alias YonderbookClubs.Clubs
   alias YonderbookClubs.Polls
@@ -15,21 +16,21 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
   @schedule_with_author_regex ~r/^(.+)\s+by\s+(.+)\s+for\s+(.+)$/i
   @schedule_without_author_regex ~r/^(.+)\s+for\s+(.+)$/i
 
-  @spec handle(String.t(), String.t()) :: :ok | :noop | {:error, atom()}
-  def handle(group_id, text) do
+  @spec handle(String.t(), String.t(), String.t() | nil) :: :ok | :noop | {:error, atom()}
+  def handle(group_id, text, sender_uuid \\ nil) do
     stripped = Helpers.strip_slash(text)
     downcased = String.downcase(stripped)
 
     result =
       case downcased do
         "start vote " <> rest ->
-          handle_start_vote_with_budget(group_id, rest)
+          handle_start_vote_with_budget(group_id, sender_uuid, rest)
 
         "start poll " <> rest ->
-          handle_start_vote_with_budget(group_id, rest)
+          handle_start_vote_with_budget(group_id, sender_uuid, rest)
 
         cmd when cmd in ["start vote", "start poll"] ->
-          handle_start_vote_prompt(group_id)
+          handle_start_vote_prompt(group_id, sender_uuid)
 
         cmd when cmd in ["close vote", "close poll"] ->
           handle_close_vote(group_id)
@@ -39,38 +40,39 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
 
         "schedule " <> _ ->
           schedule_text = String.slice(stripped, 9..-1//1) |> String.trim()
-          handle_schedule(group_id, schedule_text)
+          handle_schedule(group_id, sender_uuid, schedule_text)
 
         "schedule" ->
           handle_show_schedule(group_id)
 
         "unschedule " <> _ ->
           unschedule_text = String.slice(stripped, 11..-1//1) |> String.trim()
-          handle_unschedule(group_id, unschedule_text)
+          handle_unschedule(group_id, sender_uuid, unschedule_text)
 
         "unschedule" ->
+          PendingCommands.store({:group, group_id, sender_uuid}, :unschedule)
           YonderbookClubs.Signal.impl().send_message(
             group_id,
-            "Which book? Try: /unschedule Piranesi"
+            "Which book would you like to remove? Reply with the title."
           )
           :ok
 
         cmd when cmd in ["suggest", "remove", "help"] ->
           YonderbookClubs.Signal.impl().send_message(
             group_id,
-            "That command works in DMs, not here. Send me a direct message to #{cmd}."
+            "That one works in DMs! Send me a direct message to #{cmd}."
           )
           :ok
 
         "suggest " <> _ ->
           YonderbookClubs.Signal.impl().send_message(
             group_id,
-            "Suggestions are private — send me a DM instead."
+            "Suggestions are kept secret until voting! Send me a DM instead."
           )
           :ok
 
         _ ->
-          :noop
+          maybe_resume_group_pending(group_id, sender_uuid, stripped)
       end
 
     if result != :noop, do: maybe_send_welcome(group_id)
@@ -78,33 +80,35 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
     result
   end
 
-  defp handle_start_vote_with_budget(group_id, rest) do
+  defp handle_start_vote_with_budget(group_id, sender_uuid, rest) do
     case parse_vote_budget(rest) do
       {:ok, n} ->
         handle_start_vote(group_id, n)
 
       {:error, _} ->
+        PendingCommands.store({:group, group_id, sender_uuid}, :start_vote)
         YonderbookClubs.Signal.impl().send_message(
           group_id,
-          "Pick a number between 1 and 50, like \"/start vote 2\"."
+          "Hmm, that doesn't look like a number! Pick something between 1 and 50."
         )
         :ok
     end
   end
 
-  defp handle_start_vote_prompt(group_id) do
+  defp handle_start_vote_prompt(group_id, sender_uuid) do
     case Clubs.get_club_by_group_id(group_id) do
       %{voting_active: true} ->
         YonderbookClubs.Signal.impl().send_message(
           group_id,
-          "A vote is already open. Say \"close vote\" to end it."
+          "There's already a vote going! Say \"close vote\" to end it first."
         )
         {:error, :already_voting}
 
       _ ->
+        PendingCommands.store({:group, group_id, sender_uuid}, :start_vote)
         YonderbookClubs.Signal.impl().send_message(
           group_id,
-          "How many books should win? Reply \"/start vote 1\" or \"/start vote 2\", etc."
+          "How many books should win? Reply with a number!"
         )
         :ok
     end
@@ -152,7 +156,7 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
     if length(suggestions) < 2 do
       signal.send_message(
         group_id,
-        "I've only received one suggestion. DM me another suggestion and then I'll be ready to create the poll."
+        "Only one suggestion so far! DM me another one and I'll be ready to kick off the poll."
       )
       {:error, :not_enough_suggestions}
     else
@@ -175,7 +179,7 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
       {:error, :already_voting} ->
         YonderbookClubs.Signal.impl().send_message(
           group_id,
-          "A vote is already open. Say \"close vote\" to end it."
+          "There's already a vote going! Say \"close vote\" to end it first."
         )
         {:error, :already_voting}
     end
@@ -186,7 +190,7 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
       [] ->
         YonderbookClubs.Signal.impl().send_message(
           group_id,
-          "No suggestions yet. DM me: \"suggest Title by Author\""
+          "No suggestions yet! DM me to add one: \"suggest Title by Author\""
         )
 
         {:error, :no_suggestions}
@@ -202,15 +206,15 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
         :noop
 
       club ->
-        if club.voting_active do
-          Clubs.set_voting_active(club, false)
+        case Clubs.deactivate_voting(club) do
+          {:ok, _club} ->
+            Polls.get_latest_active_polls(club)
+            |> Enum.each(&Polls.close_poll/1)
 
-          Polls.get_latest_active_polls(club)
-          |> Enum.each(&Polls.close_poll/1)
+            YonderbookClubs.Signal.impl().send_message(group_id, "Vote closed! Say /results to see how it turned out.")
 
-          YonderbookClubs.Signal.impl().send_message(group_id, "Vote closed. Say /results for the tally.")
-        else
-          YonderbookClubs.Signal.impl().send_message(group_id, "No vote is active right now.")
+          {:error, :not_voting} ->
+            YonderbookClubs.Signal.impl().send_message(group_id, "There's no vote going on right now.")
         end
 
         :ok
@@ -227,7 +231,7 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
       club ->
         case Polls.get_latest_polls(club) do
           [] ->
-            signal.send_message(group_id, "No polls yet. Start one with /start vote.")
+            signal.send_message(group_id, "No polls yet! Get things started with /start vote.")
             :ok
 
           [first | _] = polls ->
@@ -240,7 +244,9 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
 
   # --- Schedule ---
 
-  defp handle_schedule(group_id, text) do
+  @title_by_author_regex ~r/^(.+?)\s+by\s+(.+)$/i
+
+  defp handle_schedule(group_id, sender_uuid, text) do
     signal = YonderbookClubs.Signal.impl()
 
     cond do
@@ -253,11 +259,18 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
         save_reading(group_id, String.trim(title), nil, String.trim(time_label))
 
       true ->
-        signal.send_message(
-          group_id,
-          "Try: /schedule Piranesi by Susanna Clarke for January"
-        )
+        # Missing "for <time>" — extract what we have and ask for the time
+        {title, author} = extract_title_author(text)
+        PendingCommands.store({:group, group_id, sender_uuid}, {:schedule, title, author})
+        signal.send_message(group_id, "For when? Reply with the time (e.g., January, March\u2013April)!")
         :ok
+    end
+  end
+
+  defp extract_title_author(text) do
+    case Regex.run(@title_by_author_regex, text) do
+      [_, title, author] -> {String.trim(title), String.trim(author)}
+      nil -> {String.trim(text), nil}
     end
   end
 
@@ -274,16 +287,22 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
             :ok
 
           {:error, :limit_reached} ->
-            signal.send_message(group_id, "The schedule is full (50 max). Remove one first with /unschedule.")
+            signal.send_message(group_id, "The schedule is full (50 max)! Remove one first with /unschedule to make room.")
             :ok
 
-          {:error, _changeset} ->
-            signal.send_message(group_id, "Something went wrong. Try again in a minute.")
+          {:error, changeset} ->
+            Sentry.capture_message("Reading save failed",
+              extra: %{group_id: group_id, title: title, changeset: inspect(changeset)}
+            )
+            signal.send_message(group_id, "Oops, something went wrong! Give it another try in a minute.")
             :ok
         end
 
-      {:error, _} ->
-        signal.send_message(group_id, "Something went wrong. Try again in a minute.")
+      {:error, reason} ->
+        Sentry.capture_message("Club creation failed during schedule",
+          extra: %{group_id: group_id, reason: inspect(reason)}
+        )
+        signal.send_message(group_id, "Oops, something went wrong! Give it another try in a minute.")
         :ok
     end
   end
@@ -303,32 +322,52 @@ defmodule YonderbookClubs.Bot.Router.GroupCommands do
     end
   end
 
-  defp handle_unschedule(group_id, "") do
+  defp handle_unschedule(group_id, sender_uuid, "") do
+    PendingCommands.store({:group, group_id, sender_uuid}, :unschedule)
     YonderbookClubs.Signal.impl().send_message(
       group_id,
-      "Which book? Try: /unschedule Piranesi"
+      "Which book would you like to remove? Reply with the title."
     )
     :ok
   end
 
-  defp handle_unschedule(group_id, title) do
+  defp handle_unschedule(group_id, _sender_uuid, title) do
     signal = YonderbookClubs.Signal.impl()
 
     case Clubs.get_club_by_group_id(group_id) do
       nil ->
-        signal.send_message(group_id, "No schedule entries yet.")
+        signal.send_message(group_id, "Nothing on the schedule yet!")
         :ok
 
       club ->
         case Readings.remove_reading(club, title) do
           {:ok, reading} ->
-            signal.send_message(group_id, "Removed #{reading.title} from the schedule.")
+            signal.send_message(group_id, "Got it! Removed #{reading.title} from the schedule.")
             :ok
 
           {:error, :not_found} ->
-            signal.send_message(group_id, "Couldn't find \"#{title}\" on the schedule.")
+            signal.send_message(group_id, "Hmm, I couldn't find \"#{title}\" on the schedule. Check the title and try again!")
             :ok
         end
+    end
+  end
+
+  defp maybe_resume_group_pending(group_id, sender_uuid, text) do
+    case PendingCommands.pop({:group, group_id, sender_uuid}) do
+      result when result in [:miss, :expired] ->
+        :noop
+
+      {:ok, :start_vote} ->
+        case parse_vote_budget(text) do
+          {:ok, n} -> handle_start_vote(group_id, n)
+          {:error, _} -> :noop
+        end
+
+      {:ok, :unschedule} ->
+        handle_unschedule(group_id, sender_uuid, String.trim(text))
+
+      {:ok, {:schedule, title, author}} ->
+        save_reading(group_id, title, author, String.trim(text))
     end
   end
 

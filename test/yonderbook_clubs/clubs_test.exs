@@ -144,4 +144,69 @@ defmodule YonderbookClubs.ClubsTest do
       assert failures == 4
     end
   end
+
+  describe "active field" do
+    test "new clubs are active by default" do
+      signal_group_id = "group-#{System.unique_integer([:positive])}"
+      {:ok, club} = Clubs.get_or_create_club(signal_group_id, "My Book Club")
+      assert club.active == true
+    end
+
+    test "get_or_create_club reactivates an inactive club" do
+      signal_group_id = "group-#{System.unique_integer([:positive])}"
+      {:ok, club} = Clubs.get_or_create_club(signal_group_id, "My Book Club")
+
+      # Manually deactivate
+      club |> Club.changeset(%{active: false}) |> YonderbookClubs.Repo.update!()
+
+      # Re-upsert should reactivate
+      {:ok, reactivated} = Clubs.get_or_create_club(signal_group_id, "My Book Club")
+      assert reactivated.id == club.id
+      assert reactivated.active == true
+    end
+  end
+
+  describe "deactivate_clubs_not_in/1" do
+    test "deactivates clubs not in the given list" do
+      id1 = "group-#{System.unique_integer([:positive])}"
+      id2 = "group-#{System.unique_integer([:positive])}"
+      {:ok, _club1} = Clubs.get_or_create_club(id1, "Club 1")
+      {:ok, _club2} = Clubs.get_or_create_club(id2, "Club 2")
+
+      {count, nil} = Clubs.deactivate_clubs_not_in([id1])
+
+      assert count == 1
+
+      assert Clubs.get_club_by_group_id(id1).active == true
+      assert Clubs.get_club_by_group_id(id2).active == false
+    end
+
+    test "does nothing when all clubs are in the list" do
+      id1 = "group-#{System.unique_integer([:positive])}"
+      {:ok, _} = Clubs.get_or_create_club(id1, "Club 1")
+
+      {count, nil} = Clubs.deactivate_clubs_not_in([id1])
+
+      assert count == 0
+    end
+
+    test "returns {0, nil} for empty input" do
+      assert {0, nil} = Clubs.deactivate_clubs_not_in([])
+    end
+
+    test "does not deactivate already-inactive clubs" do
+      id1 = "group-#{System.unique_integer([:positive])}"
+      id2 = "group-#{System.unique_integer([:positive])}"
+      {:ok, club1} = Clubs.get_or_create_club(id1, "Club 1")
+      {:ok, _club2} = Clubs.get_or_create_club(id2, "Club 2")
+
+      # Deactivate club1 first
+      club1 |> Club.changeset(%{active: false}) |> YonderbookClubs.Repo.update!()
+
+      # Only club2 should be deactivated (club1 is already inactive)
+      {count, nil} = Clubs.deactivate_clubs_not_in(["nonexistent"])
+
+      assert count == 1
+    end
+  end
 end

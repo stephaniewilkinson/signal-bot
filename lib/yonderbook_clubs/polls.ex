@@ -12,6 +12,8 @@ defmodule YonderbookClubs.Polls do
 
   @spec create_poll(Club.t(), integer(), integer(), [Suggestion.t()]) :: {:ok, Poll.t()} | {:error, term()}
   def create_poll(club, signal_timestamp, vote_budget, suggestions) do
+    now = DateTime.utc_now()
+
     multi =
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:poll, Poll.changeset(%Poll{}, %{
@@ -19,21 +21,19 @@ defmodule YonderbookClubs.Polls do
         signal_timestamp: signal_timestamp,
         vote_budget: vote_budget
       }))
-      |> Ecto.Multi.run(:poll_options, fn repo, %{poll: poll} ->
-        options =
-          suggestions
-          |> Enum.with_index()
-          |> Enum.map(fn {suggestion, index} ->
-            %PollOption{}
-            |> PollOption.changeset(%{
-              poll_id: poll.id,
-              option_index: index,
-              suggestion_id: suggestion.id
-            })
-            |> repo.insert!()
-          end)
-
-        {:ok, options}
+      |> Ecto.Multi.insert_all(:poll_options, PollOption, fn %{poll: poll} ->
+        suggestions
+        |> Enum.with_index()
+        |> Enum.map(fn {suggestion, index} ->
+          %{
+            id: Ecto.UUID.generate(),
+            poll_id: poll.id,
+            option_index: index,
+            suggestion_id: suggestion.id,
+            inserted_at: now,
+            updated_at: now
+          }
+        end)
       end)
 
     case Repo.transaction(multi) do

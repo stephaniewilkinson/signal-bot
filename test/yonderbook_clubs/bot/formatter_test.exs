@@ -256,7 +256,7 @@ defmodule YonderbookClubs.Bot.FormatterTest do
 
       result = Formatter.format_club_list(clubs)
 
-      assert result =~ "Which club?"
+      assert result =~ "Which one?"
       assert result =~ "1) Book Nerds"
       assert result =~ "2) Sci-Fi Circle"
     end
@@ -282,7 +282,7 @@ defmodule YonderbookClubs.Bot.FormatterTest do
   describe "format_schedule/1" do
     test "returns empty message for no readings" do
       result = Formatter.format_schedule([])
-      assert result =~ "No readings scheduled"
+      assert result =~ "Nothing on the schedule yet!"
     end
 
     test "formats readings with time label and title + author" do
@@ -370,7 +370,7 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       }
 
       result = Formatter.format_schedule_confirmation(reading)
-      assert result =~ "Added to the schedule"
+      assert result =~ "on the schedule"
       assert result =~ "Piranesi by Susanna Clarke"
       assert result =~ "January"
     end
@@ -383,7 +383,7 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       }
 
       result = Formatter.format_schedule_confirmation(reading)
-      assert result =~ "Added to the schedule: Piranesi for TBD"
+      assert result =~ "Piranesi is on the schedule for TBD"
       refute result =~ "by"
     end
   end
