@@ -240,6 +240,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
   defp handle_ai_suggestion(sender_uuid, sender_name, club, text) do
     signal = YonderbookClubs.Signal.impl()
+    signal.send_message(sender_uuid, "Looking that up for you...")
 
     case YonderbookClubs.Books.search_ai(text) do
       {:ok, book_data} ->

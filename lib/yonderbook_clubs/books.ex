@@ -10,6 +10,7 @@ defmodule YonderbookClubs.Books do
   @covers_base "https://covers.openlibrary.org/b/id"
   @anthropic_base "https://api.anthropic.com/v1/messages"
   @http_timeout_ms 15_000
+  @ai_timeout_ms 30_000
 
   @type book_data :: %{
           title: String.t() | nil,
@@ -94,7 +95,7 @@ defmodule YonderbookClubs.Books do
   Requires `:anthropic_api_key` to be configured. Returns `{:error, :ai_not_configured}`
   if the key is missing, `{:error, :unrecognized}` if Claude cannot identify a book.
   """
-  @spec search_ai(String.t()) :: {:ok, book_data()} | {:error, atom()}
+  @spec search_ai(String.t()) :: {:ok, book_data()} | {:error, term()}
   def search_ai(text) do
     case Application.get_env(:yonderbook_clubs, :anthropic_api_key) do
       nil ->
@@ -108,9 +109,21 @@ defmodule YonderbookClubs.Books do
           {:ok, _} = result ->
             result
 
+          {:error, {:ai_transport_error, _}} = error ->
+            Logger.warning("AI extraction failed (transport error), skipping fallback")
+            error
+
+          {:error, {:ai_http_error, _}} = error ->
+            Logger.warning("AI extraction failed (HTTP error), skipping fallback")
+            error
+
           {:error, reason} ->
             Logger.warning("AI extraction failed (#{inspect(reason)}), falling back to general search")
-            search_general(text)
+
+            case search_general(text) do
+              {:ok, _} = result -> result
+              {:error, _} -> {:error, reason}
+            end
         end
     end
   end
@@ -308,13 +321,21 @@ defmodule YonderbookClubs.Books do
       {"content-type", "application/json"}
     ]
 
-    case Req.post(@anthropic_base, body: body, headers: headers, receive_timeout: @http_timeout_ms, retry: :safe_transient) do
+    case Req.post(@anthropic_base, body: body, headers: headers, receive_timeout: @ai_timeout_ms) do
       {:ok, %{status: 200, body: %{"content" => [%{"text" => response_text} | _]}}} ->
         parse_ai_response(response_text)
 
+      {:ok, %{status: status, body: body}} ->
+        Logger.error("AI extraction failed: HTTP #{status} — #{inspect(body)}")
+        {:error, {:ai_http_error, status}}
+
+      {:error, %{reason: reason}} ->
+        Logger.error("AI extraction failed: #{inspect(reason)}")
+        {:error, {:ai_transport_error, reason}}
+
       other ->
         Logger.error("AI extraction failed: #{inspect(other)}")
-        {:error, :unrecognized}
+        {:error, :ai_unknown_error}
     end
   end
 

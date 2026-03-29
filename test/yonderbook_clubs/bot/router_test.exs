@@ -1780,6 +1780,11 @@ defmodule YonderbookClubs.Bot.RouterTest do
       mock_list_groups_with_club()
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Looking that up"
+        :ok
+      end)
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
         assert body =~ "still couldn't find"
         :ok
       end)
