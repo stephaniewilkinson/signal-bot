@@ -219,9 +219,11 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
   defp handle_freetext_suggestion(sender_uuid, sender_name, club, text) do
     signal = YonderbookClubs.Signal.impl()
 
-    case YonderbookClubs.Books.search_general(text) do
-      {:ok, book_data} ->
-        save_suggestion(sender_uuid, sender_name, club, book_data)
+    case YonderbookClubs.Books.search_general_multi(text) do
+      {:ok, book_data, alternatives} ->
+        PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, alternatives})
+        signal.send_message(sender_uuid, Formatter.format_book_confirm(book_data))
+        :ok
 
       {:error, _reason} ->
         PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club.id, text})
@@ -244,7 +246,9 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
     case YonderbookClubs.Books.search_ai(text) do
       {:ok, book_data} ->
-        save_suggestion(sender_uuid, sender_name, club, book_data)
+        PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, []})
+        signal.send_message(sender_uuid, Formatter.format_book_confirm(book_data))
+        :ok
 
       {:error, {tag, _}} when tag in [:ai_transport_error, :ai_http_error] ->
         signal.send_message(
@@ -284,9 +288,11 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
   defp handle_title_author_suggestion(sender_uuid, sender_name, club, title, author) do
     signal = YonderbookClubs.Signal.impl()
 
-    case YonderbookClubs.Books.search(title, author) do
-      {:ok, book_data} ->
-        save_suggestion(sender_uuid, sender_name, club, book_data)
+    case YonderbookClubs.Books.search_multi(title, author) do
+      {:ok, book_data, alternatives} ->
+        PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, alternatives})
+        signal.send_message(sender_uuid, Formatter.format_book_confirm(book_data))
+        :ok
 
       {:error, _reason} ->
         PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club.id, "#{title} by #{author}"})
@@ -424,6 +430,12 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       {:ok, {:ai_confirm, sender_name, club_id, original_text}} ->
         handle_ai_confirm(sender_uuid, sender_name, club_id, original_text, text)
 
+      {:ok, {:book_confirm, sender_name, club_id, book_data, alternatives}} ->
+        handle_book_confirm(sender_uuid, sender_name, club_id, book_data, alternatives, text)
+
+      {:ok, {:book_pick, sender_name, club_id, alternatives}} ->
+        handle_book_pick(sender_uuid, sender_name, club_id, alternatives, text)
+
       {:ok, pending_cmd} ->
         # All other pending commands expect a club number
         case parse_club_number(String.trim(text)) do
@@ -448,6 +460,55 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
       _ ->
         :no_pending
+    end
+  end
+
+  defp handle_book_confirm(sender_uuid, sender_name, club_id, book_data, alternatives, reply) do
+    signal = YonderbookClubs.Signal.impl()
+
+    case String.downcase(String.trim(reply)) do
+      yes when yes in ["yes", "y"] ->
+        club = Clubs.get_club!(club_id)
+        save_suggestion(sender_uuid, sender_name, club, book_data)
+
+      no when no in ["no", "n"] ->
+        case alternatives do
+          [] ->
+            signal.send_message(sender_uuid, Formatter.format_no_alternatives())
+            :ok
+
+          alts ->
+            PendingCommands.store(sender_uuid, {:book_pick, sender_name, club_id, alts})
+            signal.send_message(sender_uuid, Formatter.format_book_alternatives(alts))
+            :ok
+        end
+
+      _ ->
+        :no_pending
+    end
+  end
+
+  defp handle_book_pick(sender_uuid, sender_name, club_id, alternatives, reply) do
+    signal = YonderbookClubs.Signal.impl()
+    trimmed = String.trim(reply)
+
+    case Integer.parse(trimmed) do
+      {n, ""} when n >= 1 and n <= length(alternatives) ->
+        chosen = Enum.at(alternatives, n - 1)
+
+        case YonderbookClubs.Books.resolve_preview(chosen) do
+          {:ok, book_data} ->
+            club = Clubs.get_club!(club_id)
+            save_suggestion(sender_uuid, sender_name, club, book_data)
+
+          {:error, _} ->
+            signal.send_message(sender_uuid, "Something went wrong looking that up. Try /suggest again!")
+            :ok
+        end
+
+      _ ->
+        signal.send_message(sender_uuid, Formatter.format_no_alternatives())
+        :ok
     end
   end
 

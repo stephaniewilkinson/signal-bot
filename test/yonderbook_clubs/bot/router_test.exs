@@ -404,6 +404,16 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       mock_list_groups_with_club()
 
+      # Step 1: confirmation prompt
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Piranesi"
+        assert body =~ "is that right?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest Piranesi by Susanna Clarke"))
+
+      # Step 2: confirm with "yes"
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
         assert body =~ "Piranesi"
         assert body =~ "Test Club"
@@ -411,7 +421,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         :ok
       end)
 
-      assert :ok = Router.handle_message(dm_message("suggest Piranesi by Susanna Clarke"))
+      assert :ok = Router.handle_message(dm_message("yes"))
 
       suggestions = Suggestions.list_suggestions(club)
       assert length(suggestions) == 1
@@ -423,13 +433,23 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       mock_list_groups_with_club()
 
+      # Step 1: confirmation prompt
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Piranesi"
+        assert body =~ "is that right?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest Susanna Clarke, Piranesi"))
+
+      # Step 2: confirm
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
         assert body =~ "Piranesi"
         assert body =~ "Susanna Clarke"
         :ok
       end)
 
-      assert :ok = Router.handle_message(dm_message("suggest Susanna Clarke, Piranesi"))
+      assert :ok = Router.handle_message(dm_message("y"))
 
       suggestions = Suggestions.list_suggestions(club)
       assert length(suggestions) == 1
@@ -487,12 +507,22 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       mock_list_groups_with_club()
 
+      # Step 1: confirmation prompt
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Piranesi"
+        assert body =~ "is that right?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest Piranesi Susanna Clarke"))
+
+      # Step 2: confirm
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
         assert body =~ "Piranesi"
         :ok
       end)
 
-      assert :ok = Router.handle_message(dm_message("suggest Piranesi Susanna Clarke"))
+      assert :ok = Router.handle_message(dm_message("yes"))
 
       suggestions = Suggestions.list_suggestions(club)
       assert length(suggestions) == 1
@@ -1041,13 +1071,23 @@ defmodule YonderbookClubs.Bot.RouterTest do
       club = create_club()
       mock_list_groups_with_club()
 
+      # Step 1: confirmation prompt
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Piranesi"
+        assert body =~ "is that right?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("/s Piranesi by Susanna Clarke"))
+
+      # Step 2: confirm
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
         assert body =~ "Piranesi"
         assert body =~ "Test Club"
         :ok
       end)
 
-      assert :ok = Router.handle_message(dm_message("/s Piranesi by Susanna Clarke"))
+      assert :ok = Router.handle_message(dm_message("yes"))
 
       suggestions = Suggestions.list_suggestions(club)
       assert length(suggestions) == 1
@@ -1234,16 +1274,25 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       assert :ok = Router.handle_message(dm_message("/suggest"))
 
-      # Then: reply with the book
+      # Then: reply with the book — gets confirmation prompt
       mock_list_groups_with_club()
 
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Piranesi"
+        assert body =~ "is that right?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("Piranesi by Susanna Clarke"))
+
+      # Then: confirm
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
         assert body =~ "Piranesi"
         assert body =~ "Test Club"
         :ok
       end)
 
-      assert :ok = Router.handle_message(dm_message("Piranesi by Susanna Clarke"))
+      assert :ok = Router.handle_message(dm_message("yes"))
 
       suggestions = Suggestions.list_suggestions(club)
       assert length(suggestions) == 1
@@ -1259,11 +1308,12 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       assert :ok = Router.handle_message(dm_message("/s"))
 
-      # Then: reply with the book
+      # Then: reply with the book — gets confirmation prompt
       mock_list_groups_with_club()
 
-      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
         assert body =~ "Piranesi"
+        assert body =~ "is that right?"
         :ok
       end)
 
@@ -1784,6 +1834,148 @@ defmodule YonderbookClubs.Bot.RouterTest do
     end
   end
 
+  # --- Book Confirmation Flow ---
+
+  describe "DM messages - book confirmation flow" do
+    test "user says no, sees alternatives list (integration)" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      # Use freetext (no "by") so Open Library returns multiple results
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "is that right?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest the hobbit"))
+
+      # Say no — gets alternatives list (freetext returns many results)
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Here are some other matches"
+        assert body =~ "1."
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("no"))
+    end
+
+    test "user says no with no alternatives gets graceful exit" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      # Specific title+author search may return only 1 result
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "is that right?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest Piranesi by Susanna Clarke"))
+
+      # Say no — no alternatives available
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "No other matches"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("no"))
+    end
+
+    test "user picks an alternative by number (integration)" do
+      club = create_club()
+      mock_list_groups_with_club()
+
+      # Use freetext for multiple results
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "is that right?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest the hobbit"))
+
+      # Say no — gets alternatives
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Here are some other matches"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("n"))
+
+      # Pick number 1
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
+        assert body =~ "Nice! Added"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("1"))
+
+      suggestions = Suggestions.list_suggestions(club)
+      assert length(suggestions) == 1
+    end
+
+    test "user says yes confirms the top match (integration)" do
+      club = create_club()
+      mock_list_groups_with_club()
+
+      # Step 1: confirmation prompt
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Piranesi"
+        assert body =~ "is that right?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest Piranesi by Susanna Clarke"))
+
+      # Step 2: yes
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
+        assert body =~ "Nice! Added"
+        assert body =~ "Piranesi"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("y"))
+
+      suggestions = Suggestions.list_suggestions(club)
+      assert length(suggestions) == 1
+    end
+
+    test "unrelated reply after confirmation prompt falls through" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "is that right?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest Piranesi by Susanna Clarke"))
+
+      # Unrelated reply — falls through to fallback
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        # Should get help or fallback, not crash
+        assert is_binary(body)
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("hello"))
+    end
+
+    test "ISBN suggestions skip confirmation and save immediately" do
+      club = create_club()
+      mock_list_groups_with_club()
+
+      # ISBN is exact — should save directly with no confirmation step
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body, _attachments ->
+        assert body =~ "Nice! Added"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest 9780547928227"))
+
+      suggestions = Suggestions.list_suggestions(club)
+      assert length(suggestions) == 1
+    end
+  end
+
   # --- Suggest ai: Prefix ---
 
   describe "DM messages - suggest ai: prefix" do
@@ -1815,13 +2007,23 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       mock_list_groups_with_club()
 
+      # Step 1: confirmation prompt (bot doesn't know it's a dupe yet)
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Piranesi"
+        assert body =~ "is that right?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest Piranesi by Susanna Clarke"))
+
+      # Step 2: confirm — deduplication check fires on save
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
         assert body =~ "Good taste"
         assert body =~ "already on the list"
         :ok
       end)
 
-      assert :ok = Router.handle_message(dm_message("suggest Piranesi by Susanna Clarke"))
+      assert :ok = Router.handle_message(dm_message("yes"))
     end
   end
 

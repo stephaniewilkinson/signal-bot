@@ -61,6 +61,77 @@ defmodule YonderbookClubs.Books do
     end)
   end
 
+  @type search_preview :: %{title: String.t() | nil, author: String.t() | nil, doc: map()}
+
+  @doc """
+  Like `search/2` but returns up to 5 results. The top match is fully resolved;
+  the rest are lightweight previews that can be resolved later with `resolve_preview/1`.
+  """
+  @spec search_multi(String.t(), String.t()) :: {:ok, book_data(), [search_preview()]} | {:error, :not_found}
+  def search_multi(title, author) do
+    timed(:search, %{type: :title_author_multi}, fn ->
+      url = "#{@open_library_base}/search.json"
+
+      case Req.get(url, params: [title: title, author: author, language: "eng", limit: 5], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
+        {:ok, %{status: 200, body: %{"docs" => [first | rest]}}} ->
+          case build_from_search_result(first) do
+            {:ok, book_data} ->
+              {:ok, book_data, Enum.map(rest, &preview_from_doc/1)}
+
+            {:error, :not_found} ->
+              do_general_search_multi("#{title} #{author}")
+          end
+
+        _ ->
+          do_general_search_multi("#{title} #{author}")
+      end
+    end)
+  end
+
+  @doc """
+  Like `search_general/1` but returns up to 5 results.
+  """
+  @spec search_general_multi(String.t()) :: {:ok, book_data(), [search_preview()]} | {:error, :not_found}
+  def search_general_multi(query) do
+    timed(:search, %{type: :general_multi}, fn ->
+      do_general_search_multi(query)
+    end)
+  end
+
+  @doc """
+  Resolves a lightweight search preview into full book data (fetches description, etc.).
+  """
+  @spec resolve_preview(search_preview()) :: {:ok, book_data()} | {:error, :not_found}
+  def resolve_preview(%{doc: doc}) do
+    build_from_search_result(doc)
+  end
+
+  defp do_general_search_multi(query) do
+    url = "#{@open_library_base}/search.json"
+
+    case Req.get(url, params: [q: query, language: "eng", limit: 5], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
+      {:ok, %{status: 200, body: %{"docs" => [first | rest]}}} ->
+        case build_from_search_result(first) do
+          {:ok, book_data} ->
+            {:ok, book_data, Enum.map(rest, &preview_from_doc/1)}
+
+          {:error, :not_found} ->
+            {:error, :not_found}
+        end
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  defp preview_from_doc(doc) do
+    %{
+      title: doc["title"],
+      author: List.first(doc["author_name"] || []),
+      doc: doc
+    }
+  end
+
   defp do_general_search(query) do
     url = "#{@open_library_base}/search.json"
 

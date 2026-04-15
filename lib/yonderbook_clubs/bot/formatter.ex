@@ -133,6 +133,31 @@ defmodule YonderbookClubs.Bot.Formatter do
     "Nice! Added #{suggestion.title} by #{suggestion.author} to #{club_name}'s list.#{blurb}\n\nSay /remove to undo. When everyone's ready, say /start vote in the group!"
   end
 
+  @spec format_book_confirm(map()) :: String.t()
+  def format_book_confirm(book_data) do
+    title = book_data[:title] || book_data.title
+    author = book_data[:author] || book_data.author
+    "I found #{title} by #{author} — is that right? Reply yes or no."
+  end
+
+  @spec format_book_alternatives([map()]) :: String.t()
+  def format_book_alternatives(alternatives) do
+    lines =
+      alternatives
+      |> Enum.with_index(1)
+      |> Enum.map_join("\n", fn {alt, i} ->
+        author = alt.author || "Unknown Author"
+        "#{i}. #{alt.title} by #{author}"
+      end)
+
+    "Here are some other matches:\n#{lines}\n\nReply with a number, or say /suggest to start over."
+  end
+
+  @spec format_no_alternatives() :: String.t()
+  def format_no_alternatives do
+    "No other matches found. Try /suggest Title by Author to search differently."
+  end
+
   @spec format_suggestions_list([Suggestion.t()]) :: String.t()
   def format_suggestions_list([]) do
     "No suggestions yet! DM me /suggest to toss one in."
