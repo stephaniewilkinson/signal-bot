@@ -1641,6 +1641,12 @@ defmodule YonderbookClubs.Bot.RouterTest do
       assert :ok = Router.handle_message(dm_message("suggest xyzzy flurbo"))
 
       # Then: reply "yes" — triggers AI search
+      # First expect: the progress message
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Looking that up"
+        :ok
+      end)
+
       # AI search will also fail for gibberish, so we get the final error
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
         assert body =~ "still couldn't find"
@@ -1679,6 +1685,12 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert :ok = Router.handle_message(dm_message("suggest xyzzy flurbo"))
+
+      # First expect: the progress message
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Looking that up"
+        :ok
+      end)
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
         assert body =~ "still couldn't find"

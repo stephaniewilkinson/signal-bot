@@ -321,20 +321,24 @@ defmodule YonderbookClubs.Books do
       {"content-type", "application/json"}
     ]
 
-    case Req.post(@anthropic_base, body: body, headers: headers, receive_timeout: @ai_timeout_ms) do
+    req_options =
+      [body: body, headers: headers, receive_timeout: @ai_timeout_ms, retry: :transient] ++
+        anthropic_req_options()
+
+    case Req.post(@anthropic_base, req_options) do
       {:ok, %{status: 200, body: %{"content" => [%{"text" => response_text} | _]}}} ->
         parse_ai_response(response_text)
 
       {:ok, %{status: status, body: body}} ->
-        Logger.error("AI extraction failed: HTTP #{status} — #{inspect(body)}")
+        Logger.warning("AI extraction failed: HTTP #{status} — #{inspect(body)}")
         {:error, {:ai_http_error, status}}
 
       {:error, %{reason: reason}} ->
-        Logger.error("AI extraction failed: #{inspect(reason)}")
+        Logger.warning("AI extraction failed: #{inspect(reason)}")
         {:error, {:ai_transport_error, reason}}
 
       other ->
-        Logger.error("AI extraction failed: #{inspect(other)}")
+        Logger.warning("AI extraction failed: #{inspect(other)}")
         {:error, :ai_unknown_error}
     end
   end
@@ -408,6 +412,14 @@ defmodule YonderbookClubs.Books do
 
   defp cover_url(nil), do: nil
   defp cover_url(cover_id), do: "#{@covers_base}/#{cover_id}-M.jpg"
+
+  defp anthropic_req_options do
+    case Application.get_env(:yonderbook_clubs, :anthropic_req_options) do
+      nil -> []
+      opts when is_list(opts) -> opts
+      {key, value} -> [{key, value}]
+    end
+  end
 
   defp timed(event, metadata, fun) do
     start_time = System.monotonic_time()
