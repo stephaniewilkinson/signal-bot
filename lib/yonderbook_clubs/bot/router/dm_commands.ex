@@ -246,6 +246,13 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       {:ok, book_data} ->
         save_suggestion(sender_uuid, sender_name, club, book_data)
 
+      {:error, {tag, _}} when tag in [:ai_transport_error, :ai_http_error] ->
+        signal.send_message(
+          sender_uuid,
+          "Something went wrong reaching the AI service. Give it another try in a minute!"
+        )
+        :ok
+
       {:error, reason} ->
         Sentry.capture_message("AI book search failed",
           extra: %{sender_uuid: sender_uuid, query: text, reason: inspect(reason)}

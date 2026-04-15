@@ -50,10 +50,9 @@ defmodule YonderbookClubs.BooksAITest do
       end)
 
       stub_adapter(adapter)
-
       capture_log(fn -> Books.search_ai("some book") end)
 
-      assert Agent.get(counter, & &1) > 1
+      assert Agent.get(counter, & &1) == 2
       Agent.stop(counter)
     end
 
@@ -63,10 +62,9 @@ defmodule YonderbookClubs.BooksAITest do
       end)
 
       stub_adapter(adapter)
-
       capture_log(fn -> Books.search_ai("some book") end)
 
-      assert Agent.get(counter, & &1) > 1
+      assert Agent.get(counter, & &1) == 2
       Agent.stop(counter)
     end
 
@@ -76,11 +74,26 @@ defmodule YonderbookClubs.BooksAITest do
       end)
 
       stub_adapter(adapter)
-
       capture_log(fn -> Books.search_ai("some book") end)
 
-      assert Agent.get(counter, & &1) > 1
+      assert Agent.get(counter, & &1) == 2
       Agent.stop(counter)
+    end
+
+    test "retries at most once (max_retries: 1) to keep wait time bounded" do
+      {adapter, counter} = counting_adapter(fn req ->
+        {req, %Req.TransportError{reason: :closed}}
+      end)
+
+      stub_adapter(adapter)
+      capture_log(fn -> Books.search_ai("some book") end)
+
+      call_count = Agent.get(counter, & &1)
+      Agent.stop(counter)
+
+      assert call_count == 2,
+             "Expected exactly 2 calls (1 original + 1 retry), got #{call_count}. " <>
+               "max_retries should be 1 to keep total wait time under ~60s."
     end
   end
 
@@ -100,10 +113,7 @@ defmodule YonderbookClubs.BooksAITest do
 
       stub_adapter(adapter)
 
-      # search_ai calls do_ai_extraction which on success calls parse_ai_response,
-      # which then calls search/2 (hitting real Open Library). The key assertion is
-      # that we get past the transport error and reach a successful extraction.
-      result =
+      log =
         capture_log(fn ->
           send(self(), {:result, Books.search_ai("that infinite house book")})
         end)
@@ -116,9 +126,7 @@ defmodule YonderbookClubs.BooksAITest do
       Agent.stop(counter)
 
       assert call_count == 2, "Expected exactly 2 calls (1 failure + 1 success), got #{call_count}"
-
-      # Successful retry should not produce error-level logs
-      refute result =~ "[error]"
+      refute log =~ "[error]"
     end
   end
 
@@ -130,10 +138,7 @@ defmodule YonderbookClubs.BooksAITest do
 
       stub_adapter(adapter)
 
-      log =
-        capture_log(fn ->
-          Books.search_ai("some book")
-        end)
+      log = capture_log(fn -> Books.search_ai("some book") end)
 
       Agent.stop(counter)
 
@@ -149,10 +154,7 @@ defmodule YonderbookClubs.BooksAITest do
         {request, Req.Response.new(status: 500, body: %{"error" => "internal"})}
       end)
 
-      log =
-        capture_log(fn ->
-          Books.search_ai("some book")
-        end)
+      log = capture_log(fn -> Books.search_ai("some book") end)
 
       refute log =~ "[error]"
       assert log =~ "[warning]"
@@ -163,10 +165,7 @@ defmodule YonderbookClubs.BooksAITest do
         {request, Req.Response.new(status: 429, body: %{"error" => "rate_limited"})}
       end)
 
-      log =
-        capture_log(fn ->
-          Books.search_ai("some book")
-        end)
+      log = capture_log(fn -> Books.search_ai("some book") end)
 
       refute log =~ "[error]"
       assert log =~ "[warning]"
@@ -181,16 +180,13 @@ defmodule YonderbookClubs.BooksAITest do
 
       stub_adapter(adapter)
 
-      result =
-        capture_log(fn ->
-          send(self(), {:result, Books.search_ai("some book")})
-        end)
+      result = capture_log(fn ->
+        send(self(), {:result, Books.search_ai("some book")})
+      end)
 
       Agent.stop(counter)
 
       assert_received {:result, {:error, {:ai_transport_error, :closed}}}
-
-      # Should NOT fall back to general search for transport errors
       assert result =~ "skipping fallback"
     end
 

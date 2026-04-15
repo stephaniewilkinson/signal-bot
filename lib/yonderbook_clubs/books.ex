@@ -322,8 +322,13 @@ defmodule YonderbookClubs.Books do
     ]
 
     req_options =
-      [body: body, headers: headers, receive_timeout: @ai_timeout_ms, retry: :transient] ++
-        anthropic_req_options()
+      [
+        body: body,
+        headers: headers,
+        receive_timeout: @ai_timeout_ms,
+        retry: :transient,
+        max_retries: 1
+      ] ++ anthropic_req_options()
 
     case Req.post(@anthropic_base, req_options) do
       {:ok, %{status: 200, body: %{"content" => [%{"text" => response_text} | _]}}} ->
