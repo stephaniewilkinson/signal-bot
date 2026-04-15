@@ -3,7 +3,8 @@ import Config
 if config_env() == :dev do
   config :yonderbook_clubs,
     signal_bot_number: System.get_env("SIGNAL_BOT_NUMBER") || "+14582995422",
-    anthropic_api_key: System.get_env("ANTHROPIC_API_KEY")
+    anthropic_api_key: System.get_env("ANTHROPIC_API_KEY"),
+    gemini_api_key: System.get_env("GEMINI_API_KEY")
 end
 
 if config_env() == :prod do
@@ -28,7 +29,8 @@ if config_env() == :prod do
     signal_bot_number:
       System.get_env("SIGNAL_BOT_NUMBER") ||
         raise("environment variable SIGNAL_BOT_NUMBER is missing."),
-    anthropic_api_key: System.get_env("ANTHROPIC_API_KEY")
+    anthropic_api_key: System.get_env("ANTHROPIC_API_KEY"),
+    gemini_api_key: System.get_env("GEMINI_API_KEY")
 
   if dsn = System.get_env("SENTRY_DSN") do
     config :sentry, dsn: dsn

@@ -1,7 +1,7 @@
 defmodule YonderbookClubs.Books do
   @moduledoc """
   Book metadata lookup via Open Library API (primary) and AI-assisted extraction
-  via Anthropic Claude API (opt-in).
+  via Anthropic Claude API (opt-in), with Gemini as a hot fallback.
   """
 
   require Logger
@@ -9,8 +9,16 @@ defmodule YonderbookClubs.Books do
   @open_library_base "https://openlibrary.org"
   @covers_base "https://covers.openlibrary.org/b/id"
   @anthropic_base "https://api.anthropic.com/v1/messages"
+  @gemini_base "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
   @http_timeout_ms 15_000
   @ai_timeout_ms 30_000
+
+  @ai_system_prompt "You are a book identification assistant. Given a user's description, extract the exact book title " <>
+                      "and author. The input may contain misspellings, partial names, or approximate titles — " <>
+                      "do your best to identify the intended book. Return the EXACT, COMPLETE title as published " <>
+                      "(e.g. \"Babylonia\" not \"Babylon\"). Return ONLY valid JSON (no markdown, no code fences) " <>
+                      "with keys \"title\" and \"author\" using correct spelling. " <>
+                      "If you truly cannot identify any plausible book, return {\"error\": \"unrecognized\"}."
 
   @type book_data :: %{
           title: String.t() | nil,
@@ -109,13 +117,13 @@ defmodule YonderbookClubs.Books do
           {:ok, _} = result ->
             result
 
-          {:error, {:ai_transport_error, _}} = error ->
-            Logger.warning("AI extraction failed (transport error), skipping fallback")
-            error
+          {:error, {tag, _}} = anthropic_error when tag in [:ai_transport_error, :ai_http_error] ->
+            Logger.warning("Anthropic unavailable (#{tag}), trying Gemini fallback")
 
-          {:error, {:ai_http_error, _}} = error ->
-            Logger.warning("AI extraction failed (HTTP error), skipping fallback")
-            error
+            case try_gemini_fallback(text) do
+              {:ok, _} = result -> result
+              {:error, _} -> anthropic_error
+            end
 
           {:error, reason} ->
             Logger.warning("AI extraction failed (#{inspect(reason)}), falling back to general search")
@@ -297,19 +305,11 @@ defmodule YonderbookClubs.Books do
   # --- AI extraction ---
 
   defp do_ai_extraction(text, api_key) do
-    system_prompt =
-      "You are a book identification assistant. Given a user's description, extract the exact book title " <>
-        "and author. The input may contain misspellings, partial names, or approximate titles — " <>
-        "do your best to identify the intended book. Return the EXACT, COMPLETE title as published " <>
-        "(e.g. \"Babylonia\" not \"Babylon\"). Return ONLY valid JSON (no markdown, no code fences) " <>
-        "with keys \"title\" and \"author\" using correct spelling. " <>
-        "If you truly cannot identify any plausible book, return {\"error\": \"unrecognized\"}."
-
     body =
       Jason.encode!(%{
         model: "claude-sonnet-4-20250514",
         max_tokens: 200,
-        system: system_prompt,
+        system: @ai_system_prompt,
         messages: [
           %{role: "user", content: text}
         ]
@@ -345,6 +345,54 @@ defmodule YonderbookClubs.Books do
       other ->
         Logger.warning("AI extraction failed: #{inspect(other)}")
         {:error, :ai_unknown_error}
+    end
+  end
+
+  defp try_gemini_fallback(text) do
+    case Application.get_env(:yonderbook_clubs, :gemini_api_key) do
+      key when key in [nil, ""] ->
+        {:error, :gemini_not_configured}
+
+      api_key ->
+        do_gemini_extraction(text, api_key)
+    end
+  end
+
+  defp do_gemini_extraction(text, api_key) do
+    body =
+      Jason.encode!(%{
+        model: "gemini-2.0-flash",
+        max_tokens: 200,
+        messages: [
+          %{role: "system", content: @ai_system_prompt},
+          %{role: "user", content: text}
+        ]
+      })
+
+    headers = [
+      {"authorization", "Bearer #{api_key}"},
+      {"content-type", "application/json"}
+    ]
+
+    req_options =
+      [body: body, headers: headers, receive_timeout: @ai_timeout_ms] ++
+        gemini_req_options()
+
+    case Req.post(@gemini_base, req_options) do
+      {:ok, %{status: 200, body: %{"choices" => [%{"message" => %{"content" => content}} | _]}}} ->
+        parse_ai_response(content)
+
+      {:ok, %{status: status, body: body}} ->
+        Logger.warning("Gemini fallback failed: HTTP #{status} — #{inspect(body)}")
+        {:error, {:gemini_http_error, status}}
+
+      {:error, %{reason: reason}} ->
+        Logger.warning("Gemini fallback failed: #{inspect(reason)}")
+        {:error, {:gemini_transport_error, reason}}
+
+      other ->
+        Logger.warning("Gemini fallback failed: #{inspect(other)}")
+        {:error, :gemini_unknown_error}
     end
   end
 
@@ -420,6 +468,14 @@ defmodule YonderbookClubs.Books do
 
   defp anthropic_req_options do
     case Application.get_env(:yonderbook_clubs, :anthropic_req_options) do
+      nil -> []
+      opts when is_list(opts) -> opts
+      {key, value} -> [{key, value}]
+    end
+  end
+
+  defp gemini_req_options do
+    case Application.get_env(:yonderbook_clubs, :gemini_req_options) do
       nil -> []
       opts when is_list(opts) -> opts
       {key, value} -> [{key, value}]
