@@ -6,6 +6,7 @@ defmodule YonderbookClubs.Bot.Router do
   based on whether the message is a group message or a DM.
   """
 
+  alias YonderbookClubs.Bot.PendingCommands
   alias YonderbookClubs.Bot.Router.{DMCommands, GroupCommands}
   alias YonderbookClubs.Polls
 
@@ -24,11 +25,18 @@ defmodule YonderbookClubs.Bot.Router do
   @spec handle_message(map()) :: :ok | :noop | {:error, atom()}
   def handle_message(%{"groupInfo" => %{"groupId" => group_id}} = msg) do
     text = (msg["message"] || "") |> String.trim()
-    command = text |> String.downcase() |> String.split(" ") |> Enum.take(2) |> Enum.join(" ")
-    Logger.metadata(group_id: group_id, command: command)
-    set_sentry_context(%{group_id: group_id, command: command, message_type: "group"})
     sender_uuid = msg["sourceUuid"]
-    GroupCommands.handle(group_id, text, sender_uuid)
+
+    has_pending = sender_uuid && PendingCommands.has_pending?({:group, group_id, sender_uuid})
+
+    if String.starts_with?(text, "/") or has_pending do
+      command = text |> String.downcase() |> String.split(" ") |> Enum.take(2) |> Enum.join(" ")
+      Logger.metadata(group_id: group_id, command: command)
+      set_sentry_context(%{group_id: group_id, command: command, message_type: "group"})
+      GroupCommands.handle(group_id, text, sender_uuid)
+    else
+      :noop
+    end
   end
 
   def handle_message(%{"sourceUuid" => sender_uuid} = msg) do

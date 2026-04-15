@@ -82,7 +82,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         {:ok, 1234567890}
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "start vote 1"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/start vote 1"))
 
       assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
       assert %{success: 1} = Oban.drain_queue(queue: :default)
@@ -99,7 +99,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         :ok
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "start vote"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/start vote"))
     end
 
     test "start vote without number says already open when voting is active" do
@@ -112,7 +112,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert {:error, :already_voting} =
-               Router.handle_message(group_message("group.abc123", "start vote"))
+               Router.handle_message(group_message("group.abc123", "/start vote"))
     end
 
     test "start vote N parses vote budget" do
@@ -131,7 +131,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         {:ok, 1234567890}
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "start vote 3"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/start vote 3"))
 
       assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
       assert %{success: 1} = Oban.drain_queue(queue: :default)
@@ -152,7 +152,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         {:ok, 1234567890}
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "start vote 5"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/start vote 5"))
 
       assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
       assert %{success: 1} = Oban.drain_queue(queue: :default)
@@ -167,7 +167,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert {:error, :no_suggestions} =
-               Router.handle_message(group_message("group.abc123", "start vote 1"))
+               Router.handle_message(group_message("group.abc123", "/start vote 1"))
 
       updated_club = Clubs.get_club_by_group_id("group.abc123")
       assert updated_club.voting_active == false
@@ -183,7 +183,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert {:error, :already_voting} =
-               Router.handle_message(group_message("group.abc123", "start vote 1"))
+               Router.handle_message(group_message("group.abc123", "/start vote 1"))
     end
 
     test "start poll is an alias for start vote" do
@@ -197,7 +197,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         {:ok, 1234567890}
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "start poll 1"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/start poll 1"))
 
       assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
       assert %{success: 1} = Oban.drain_queue(queue: :default)
@@ -214,7 +214,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         {:ok, 1234567890}
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "START VOTE 1"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/START VOTE 1"))
 
       assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
       assert %{success: 1} = Oban.drain_queue(queue: :default)
@@ -247,7 +247,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         {:ok, 1000000002}
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "start vote 9"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/start vote 9"))
 
       assert_enqueued worker: YonderbookClubs.Workers.SendVoteWorker
       assert %{success: 1} = Oban.drain_queue(queue: :default)
@@ -267,7 +267,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert {:error, :not_enough_suggestions} =
-               Router.handle_message(group_message("group.abc123", "start vote 1"))
+               Router.handle_message(group_message("group.abc123", "/start vote 1"))
 
       updated_club = Clubs.get_club_by_group_id("group.abc123")
       assert updated_club.voting_active == false
@@ -285,7 +285,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         :ok
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "close vote"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/close vote"))
 
       updated_club = Clubs.get_club_by_group_id("group.abc123")
       assert updated_club.voting_active == false
@@ -300,7 +300,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         :ok
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "close poll"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/close poll"))
 
       updated_club = Clubs.get_club_by_group_id("group.abc123")
       assert updated_club.voting_active == false
@@ -314,7 +314,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         :ok
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "close vote"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/close vote"))
     end
   end
 
@@ -613,7 +613,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         :ok
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "results"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/results"))
     end
 
     test "results with no polls tells the user" do
@@ -624,7 +624,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         :ok
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "results"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/results"))
     end
   end
 
@@ -720,7 +720,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
                )
     end
 
-    test "schedule works without leading slash" do
+    test "schedule works with leading slash" do
       _club = create_club()
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
@@ -731,7 +731,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       assert :ok =
                Router.handle_message(
-                 group_message("group.abc123", "schedule Piranesi for January")
+                 group_message("group.abc123", "/schedule Piranesi for January")
                )
     end
 
@@ -2069,7 +2069,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         :ok
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "suggest"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/suggest"))
     end
 
     test "suggest with text in group redirects to DM" do
@@ -2080,7 +2080,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         :ok
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "suggest Piranesi by Susanna Clarke"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/suggest Piranesi by Susanna Clarke"))
     end
 
     test "help in group redirects to DM" do
@@ -2091,7 +2091,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
         :ok
       end)
 
-      assert :ok = Router.handle_message(group_message("group.abc123", "help"))
+      assert :ok = Router.handle_message(group_message("group.abc123", "/help"))
     end
   end
 
@@ -2126,11 +2126,11 @@ defmodule YonderbookClubs.Bot.RouterTest do
     end
 
     test "close vote with no club is noop" do
-      assert :noop = Router.handle_message(group_message("group.nonexistent", "close vote"))
+      assert :noop = Router.handle_message(group_message("group.nonexistent", "/close vote"))
     end
 
     test "results with no club is noop" do
-      assert :noop = Router.handle_message(group_message("group.nonexistent", "results"))
+      assert :noop = Router.handle_message(group_message("group.nonexistent", "/results"))
     end
 
     test "message with no groupInfo or sourceUuid is ignored" do
@@ -2155,7 +2155,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       end)
 
       assert :ok = Router.handle_message(
-        group_message("group.abc123", "schedule Another Book for January")
+        group_message("group.abc123", "/schedule Another Book for January")
       )
     end
   end

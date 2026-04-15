@@ -30,6 +30,16 @@ defmodule YonderbookClubs.Bot.PendingCommands do
   end
 
   @spec pop(term()) :: {:ok, term()} | :miss | :expired
+  def has_pending?(key) do
+    case :ets.lookup(@table, key) do
+      [{^key, _command, expires_at}] ->
+        System.monotonic_time(:millisecond) < expires_at
+
+      [] ->
+        false
+    end
+  end
+
   def pop(key) do
     case :ets.lookup(@table, key) do
       [{^key, command, expires_at}] ->
