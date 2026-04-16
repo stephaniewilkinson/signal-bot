@@ -259,13 +259,19 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
     Regex.match?(~r/^(\d{10}|\d{9}X|\d{13})$/i, stripped)
   end
 
-  defp handle_ai_suggestion(sender_uuid, sender_name, club, text) do
+  defp handle_ai_suggestion(sender_uuid, sender_name, club, text, rejected_titles \\ []) do
     signal = YonderbookClubs.Signal.impl()
-    signal.send_message(sender_uuid, "Looking that up for you...")
 
-    case YonderbookClubs.Books.search_ai(text) do
+    if rejected_titles == [] do
+      signal.send_message(sender_uuid, "Looking that up for you...")
+    else
+      signal.send_message(sender_uuid, "Let me try again...")
+    end
+
+    case YonderbookClubs.Books.search_ai(text, rejected_titles) do
       {:ok, book_data} ->
-        PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, [], text})
+        new_rejected = rejected_titles ++ [book_data.title]
+        PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, [], text, new_rejected})
         signal.send_message(sender_uuid, Formatter.format_book_confirm(book_data))
         :ok
 
@@ -461,8 +467,11 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       {:ok, {:ai_confirm, sender_name, club_id, original_text}} ->
         handle_ai_confirm(sender_uuid, sender_name, club_id, original_text, text)
 
+      {:ok, {:book_confirm, sender_name, club_id, book_data, alternatives, original_query, rejected}} ->
+        handle_book_confirm(sender_uuid, sender_name, club_id, book_data, alternatives, original_query, text, rejected)
+
       {:ok, {:book_confirm, sender_name, club_id, book_data, alternatives, original_query}} ->
-        handle_book_confirm(sender_uuid, sender_name, club_id, book_data, alternatives, original_query, text)
+        handle_book_confirm(sender_uuid, sender_name, club_id, book_data, alternatives, original_query, text, nil)
 
       {:ok, {:book_pick, sender_name, club_id, alternatives, original_query}} ->
         handle_book_pick(sender_uuid, sender_name, club_id, alternatives, original_query, text)
@@ -494,7 +503,9 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
     end
   end
 
-  defp handle_book_confirm(sender_uuid, sender_name, club_id, book_data, alternatives, original_query, reply) do
+  @max_ai_retries 3
+
+  defp handle_book_confirm(sender_uuid, sender_name, club_id, book_data, alternatives, original_query, reply, rejected) do
     signal = YonderbookClubs.Signal.impl()
 
     case String.downcase(String.trim(reply)) do
@@ -504,6 +515,15 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
       no when no in ["no", "n"] ->
         case alternatives do
+          [] when is_list(rejected) and length(rejected) < @max_ai_retries ->
+            club = Clubs.get_club!(club_id)
+            handle_ai_suggestion(sender_uuid, sender_name, club, original_query, rejected)
+
+          [] when is_list(rejected) ->
+            PendingCommands.store(sender_uuid, {:suggest_text, sender_name})
+            signal.send_message(sender_uuid, "I'm stumped! Want to try again? Send me the title and author, like: Piranesi by Susanna Clarke")
+            :ok
+
           [] ->
             PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club_id, original_query})
             signal.send_message(sender_uuid, "No other matches found. Want me to use AI to look it up? Reply yes or no.")

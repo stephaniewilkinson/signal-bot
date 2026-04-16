@@ -172,7 +172,7 @@ mix run --no-halt
 - **Elixir** — plain OTP app (no Phoenix), `rest_for_one` supervision
 - **PostgreSQL** via Ecto
 - **signal-cli** — JSON-RPC over TCP for Signal integration
-- **Open Library API** — book metadata, covers, descriptions
+- **Open Library API** — book metadata, covers, descriptions (see [Open Library quirks](#open-library-quirks) below)
 - **Claude API** — AI-assisted suggestion extraction (opt-in only)
 - **Oban** — background job processing (vote sending with retry)
 - **ETS** — in-memory club cache + pending command state with TTL
@@ -220,6 +220,14 @@ Group commands manage voting and scheduling. DM commands handle suggestions and 
 - **Clean slate** — suggestions are archived after each vote cycle, keeping the pool current
 - **AI transparency** — the `ai:` prefix is the only path that touches Claude. When a search fails, the bot explicitly asks before using AI
 - **Concurrency safety** — voting state changes use atomic DB operations; reading limits use row-level locks
+
+### Open Library Quirks
+
+Open Library's search API has a `language` filter parameter, but it **excludes books that have no language metadata at all** — not just non-English books. Many newer or less-popular titles (e.g. "The Moorwitch" by Jessica Khoury) lack language tags in Open Library's database, so `language=eng` silently drops them from results.
+
+To work around this, we **do not use Open Library's `language` filter**. Instead, we fetch extra results and filter client-side: a book is considered English if its `language` array includes `"eng"` or if no language data is present. This avoids false negatives from missing metadata while still deprioritizing non-English-only results. The client-side filter lives in `Books.english_doc?/1`.
+
+Open Library also has **no fuzzy matching for compound words**. A search for "The Moor Witch" will not match a book titled "Moorwitch" (one word). When a title+author search fails in the AI extraction pipeline, we retry with a collapsed title (strip leading articles, remove spaces) before falling back to general search. See `Books.collapse_title/1`.
 
 ## Testing
 

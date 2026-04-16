@@ -40,9 +40,12 @@ defmodule YonderbookClubs.Books do
     timed(:search, %{type: :title_author}, fn ->
       url = "#{@open_library_base}/search.json"
 
-      case Req.get(url, params: [title: title, author: author, language: "eng", limit: 1], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
-        {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
-          build_from_search_result(first)
+      case Req.get(url, params: [title: title, author: author, limit: 5], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
+        {:ok, %{status: 200, body: %{"docs" => docs}}} when docs != [] ->
+          case first_english_doc(docs) do
+            nil -> do_general_search("#{title} #{author}")
+            doc -> build_from_search_result(doc)
+          end
 
         _ ->
           do_general_search("#{title} #{author}")
@@ -72,13 +75,19 @@ defmodule YonderbookClubs.Books do
     timed(:search, %{type: :title_author_multi}, fn ->
       url = "#{@open_library_base}/search.json"
 
-      case Req.get(url, params: [title: title, author: author, language: "eng", limit: 5], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
-        {:ok, %{status: 200, body: %{"docs" => [first | rest]}}} ->
-          case build_from_search_result(first) do
-            {:ok, book_data} ->
-              {:ok, book_data, Enum.map(rest, &preview_from_doc/1)}
+      case Req.get(url, params: [title: title, author: author, limit: 10], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
+        {:ok, %{status: 200, body: %{"docs" => docs}}} when docs != [] ->
+          case filter_english_docs(docs, 5) do
+            [first | rest] ->
+              case build_from_search_result(first) do
+                {:ok, book_data} ->
+                  {:ok, book_data, Enum.map(rest, &preview_from_doc/1)}
 
-            {:error, :not_found} ->
+                {:error, :not_found} ->
+                  do_general_search_multi("#{title} #{author}")
+              end
+
+            [] ->
               do_general_search_multi("#{title} #{author}")
           end
 
@@ -109,13 +118,19 @@ defmodule YonderbookClubs.Books do
   defp do_general_search_multi(query) do
     url = "#{@open_library_base}/search.json"
 
-    case Req.get(url, params: [q: query, language: "eng", limit: 5], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
-      {:ok, %{status: 200, body: %{"docs" => [first | rest]}}} ->
-        case build_from_search_result(first) do
-          {:ok, book_data} ->
-            {:ok, book_data, Enum.map(rest, &preview_from_doc/1)}
+    case Req.get(url, params: [q: query, limit: 10], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
+      {:ok, %{status: 200, body: %{"docs" => docs}}} when docs != [] ->
+        case filter_english_docs(docs, 5) do
+          [first | rest] ->
+            case build_from_search_result(first) do
+              {:ok, book_data} ->
+                {:ok, book_data, Enum.map(rest, &preview_from_doc/1)}
 
-          {:error, :not_found} ->
+              {:error, :not_found} ->
+                {:error, :not_found}
+            end
+
+          [] ->
             {:error, :not_found}
         end
 
@@ -132,12 +147,33 @@ defmodule YonderbookClubs.Books do
     }
   end
 
+  # Open Library's `language=eng` filter excludes books with no language metadata,
+  # so we fetch without it and filter client-side. A doc is considered English if
+  # its language list includes "eng" or if no language data is present.
+  defp english_doc?(doc) do
+    case doc["language"] do
+      nil -> true
+      [] -> true
+      langs when is_list(langs) -> "eng" in langs
+      _ -> true
+    end
+  end
+
+  defp first_english_doc(docs), do: Enum.find(docs, &english_doc?/1)
+
+  defp filter_english_docs(docs, limit) do
+    docs |> Enum.filter(&english_doc?/1) |> Enum.take(limit)
+  end
+
   defp do_general_search(query) do
     url = "#{@open_library_base}/search.json"
 
-    case Req.get(url, params: [q: query, language: "eng", limit: 1], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
-      {:ok, %{status: 200, body: %{"docs" => [first | _]}}} ->
-        build_from_search_result(first)
+    case Req.get(url, params: [q: query, limit: 5], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
+      {:ok, %{status: 200, body: %{"docs" => docs}}} when docs != [] ->
+        case first_english_doc(docs) do
+          nil -> {:error, :not_found}
+          doc -> build_from_search_result(doc)
+        end
 
       _ ->
         {:error, :not_found}
@@ -174,8 +210,8 @@ defmodule YonderbookClubs.Books do
   Requires `:anthropic_api_key` to be configured. Returns `{:error, :ai_not_configured}`
   if the key is missing, `{:error, :unrecognized}` if Claude cannot identify a book.
   """
-  @spec search_ai(String.t()) :: {:ok, book_data()} | {:error, term()}
-  def search_ai(text) do
+  @spec search_ai(String.t(), [String.t()]) :: {:ok, book_data()} | {:error, term()}
+  def search_ai(text, rejected_titles \\ []) do
     case Application.get_env(:yonderbook_clubs, :anthropic_api_key) do
       nil ->
         {:error, :ai_not_configured}
@@ -184,7 +220,7 @@ defmodule YonderbookClubs.Books do
         {:error, :ai_not_configured}
 
       api_key ->
-        case do_ai_extraction(text, api_key) do
+        case do_ai_extraction(text, api_key, rejected_titles) do
           {:ok, _} = result ->
             result
 
@@ -375,14 +411,22 @@ defmodule YonderbookClubs.Books do
 
   # --- AI extraction ---
 
-  defp do_ai_extraction(text, api_key) do
+  defp do_ai_extraction(text, api_key, rejected_titles) do
+    user_content =
+      case rejected_titles do
+        [] -> text
+        titles ->
+          rejected_list = Enum.join(titles, ", ")
+          "#{text}\n\nDo NOT suggest these books (already rejected by the user): #{rejected_list}. Find a DIFFERENT book."
+      end
+
     body =
       Jason.encode!(%{
         model: "claude-sonnet-4-6",
         max_tokens: 200,
         system: @ai_system_prompt,
         messages: [
-          %{role: "user", content: text}
+          %{role: "user", content: user_content}
         ]
       })
 
@@ -481,8 +525,22 @@ defmodule YonderbookClubs.Books do
 
       {:ok, %{"title" => title, "author" => author}} ->
         case search(title, author) do
-          {:ok, _} = result -> result
-          {:error, _} -> search_general("#{title} #{author}")
+          {:ok, _} = result ->
+            result
+
+          {:error, _} ->
+            # Open Library can't fuzzy-match split words (e.g. "Moor Witch" vs "Moorwitch"),
+            # so try collapsing multi-word titles into a single compound word as a fallback.
+            collapsed = collapse_title(title)
+
+            if collapsed != title do
+              case search(collapsed, author) do
+                {:ok, _} = result -> result
+                {:error, _} -> search_general("#{title} #{author}")
+              end
+            else
+              search_general("#{title} #{author}")
+            end
         end
 
       _other ->
@@ -539,6 +597,15 @@ defmodule YonderbookClubs.Books do
 
   defp cover_url(nil), do: nil
   defp cover_url(cover_id), do: "#{@covers_base}/#{cover_id}-M.jpg"
+
+  # Collapse a multi-word title into a compound word for Open Library search.
+  # Strips leading articles ("The", "A", "An") and removes spaces.
+  # e.g. "The Moor Witch" → "MoorWitch"
+  defp collapse_title(title) do
+    title
+    |> String.replace(~r/^(the|a|an)\s+/i, "")
+    |> String.replace(" ", "")
+  end
 
   defp anthropic_req_options do
     case Application.get_env(:yonderbook_clubs, :anthropic_req_options) do
