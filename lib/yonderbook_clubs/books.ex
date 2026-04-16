@@ -592,14 +592,16 @@ defmodule YonderbookClubs.Books do
         {:error, :unrecognized}
 
       {:ok, %{"title" => title, "author" => author}} ->
-        # Flat search chain — at most 3 distinct API calls, no cascading fallbacks.
+        # Flat search chain — at most 4 distinct API calls, no cascading fallbacks.
+        # Includes a title-only fallback since the AI may hallucinate the author.
         collapsed = collapse_title(title)
 
         queries =
           [
             fn -> search_structured(title, author) end,
             if(collapsed != title, do: fn -> search_structured(collapsed, author) end),
-            fn -> do_general_search("#{collapsed} #{author}") end
+            fn -> do_general_search("#{collapsed} #{author}") end,
+            fn -> do_general_search(collapsed) end
           ]
           |> Enum.reject(&is_nil/1)
 
