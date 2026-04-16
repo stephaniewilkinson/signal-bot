@@ -355,7 +355,7 @@ defmodule YonderbookClubs.Signal.CLI do
           rescue
             e ->
               Logger.error("Message handler crashed: #{Exception.message(e)}")
-              Sentry.capture_exception(e, stacktrace: __STACKTRACE__, extra: %{message: msg})
+              Sentry.capture_exception(e, stacktrace: __STACKTRACE__)
 
               # Send error reply so the user isn't left in silence
               reply_to = msg["groupInfo"]["groupId"] || msg["sourceUuid"]

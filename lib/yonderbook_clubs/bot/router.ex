@@ -30,9 +30,7 @@ defmodule YonderbookClubs.Bot.Router do
     has_pending = sender_uuid && PendingCommands.has_pending?({:group, group_id, sender_uuid})
 
     if String.starts_with?(text, "/") or has_pending do
-      command = text |> String.downcase() |> String.split(" ") |> Enum.take(2) |> Enum.join(" ")
-      Logger.metadata(group_id: group_id, command: command)
-      set_sentry_context(%{group_id: group_id, command: command, message_type: "group"})
+      set_sentry_context(%{group_id: group_id, message_type: "group"})
       GroupCommands.handle(group_id, text, sender_uuid)
     else
       :noop
@@ -41,18 +39,13 @@ defmodule YonderbookClubs.Bot.Router do
 
   def handle_message(%{"sourceUuid" => sender_uuid} = msg) do
     text = (msg["message"] || "") |> String.trim()
-    command = text |> String.downcase() |> String.split(" ") |> Enum.take(2) |> Enum.join(" ")
-    Logger.metadata(sender_uuid: sender_uuid, command: command)
-    set_sentry_context(%{command: command, message_type: "dm"})
+    set_sentry_context(%{message_type: "dm"})
     Sentry.Context.set_user_context(%{id: sender_uuid})
     sender_name = msg["sourceName"] || "there"
     DMCommands.handle(sender_uuid, sender_name, text)
   end
 
-  def handle_message(_msg) do
-    Logger.warning("Received message with no groupInfo or sourceUuid, ignoring")
-    :noop
-  end
+  def handle_message(_msg), do: :noop
 
   @doc """
   Handles an incoming poll vote notification from signal-cli.
