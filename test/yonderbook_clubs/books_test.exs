@@ -72,6 +72,50 @@ defmodule YonderbookClubs.BooksTest do
         end
       end
     end
+
+    @tag :external
+    test "returns an error when the API key is inactive" do
+      api_key = System.get_env("ANTHROPIC_API_KEY")
+
+      if is_nil(api_key) or api_key == "" do
+        flunk("ANTHROPIC_API_KEY not set in environment — add it to .env and retry")
+      end
+
+      Application.put_env(:yonderbook_clubs, :anthropic_api_key, api_key)
+
+      result = Books.search_ai("Piranesi by Susanna Clarke")
+
+      case result do
+        {:ok, _} ->
+          :ok
+
+        {:error, {:ai_http_error, status}} ->
+          flunk("Anthropic API key is inactive or invalid (HTTP #{status})")
+
+        {:error, reason} ->
+          flunk("AI extraction failed unexpectedly: #{inspect(reason)}")
+      end
+    end
+
+    @tag :external
+    test "AI extracts correct book from fuzzy title (e2e with real API key)" do
+      # This test verifies the full AI extraction pipeline works end-to-end:
+      # fuzzy input → AI extracts correct title/author → Open Library finds the book.
+      # Requires a valid ANTHROPIC_API_KEY in the environment.
+      api_key = System.get_env("ANTHROPIC_API_KEY")
+
+      if is_nil(api_key) or api_key == "" do
+        flunk("ANTHROPIC_API_KEY not set in environment — add it to .env and retry")
+      end
+
+      Application.put_env(:yonderbook_clubs, :anthropic_api_key, api_key)
+
+      assert {:ok, book_data} = Books.search_ai("The Moor Witch by Jessica Khoury")
+
+      assert book_data.title =~ "Moorwitch"
+      assert book_data.author =~ "Khoury"
+      assert book_data.open_library_work_id != nil
+    end
   end
 
   describe "normalize_isbn/1" do
