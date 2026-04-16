@@ -26,12 +26,31 @@ defmodule YonderbookClubs.Readings do
     end
   end
 
+  @month_order ~w(january february march april may june july august september october november december)
+
   @spec list_readings(Club.t()) :: [Reading.t()]
   def list_readings(club) do
     Reading
     |> where(club_id: ^club.id)
-    |> order_by(asc: :inserted_at, asc: :id)
     |> Repo.all()
+    |> Enum.sort_by(&parse_time_label_sort_key/1)
+  end
+
+  defp parse_time_label_sort_key(%{time_label: nil}), do: {9999, 99}
+
+  defp parse_time_label_sort_key(%{time_label: label}) do
+    downcased = String.downcase(label)
+
+    year =
+      case Regex.run(~r/\b(20\d{2})\b/, downcased) do
+        [_, y] -> String.to_integer(y)
+        nil -> 9999
+      end
+
+    month =
+      Enum.find_index(@month_order, fn m -> String.contains?(downcased, m) end) || 99
+
+    {year, month}
   end
 
   @spec remove_reading(Club.t(), String.t()) :: {:ok, Reading.t()} | {:error, :not_found}
