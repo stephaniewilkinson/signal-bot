@@ -150,7 +150,7 @@ defmodule YonderbookClubs.Bot.Formatter do
         "#{i}. #{alt.title} by #{author}"
       end)
 
-    "Here are some other matches:\n#{lines}\n\nReply with a number, or say /suggest to start over."
+    "Here are some other matches:\n#{lines}\n\nReply with a number, no for AI lookup, or /suggest to start over."
   end
 
   @spec format_no_alternatives() :: String.t()
