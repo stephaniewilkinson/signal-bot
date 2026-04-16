@@ -48,8 +48,17 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       "suggestions " <> rest ->
         handle_suggestions(sender_uuid, parse_club_number(rest))
 
+      "schedule " <> _ ->
+        handle_schedule(sender_uuid, stripped)
+
       "schedule" ->
         handle_show_schedule(sender_uuid)
+
+      "unschedule " <> _ ->
+        handle_unschedule(sender_uuid, stripped)
+
+      "unschedule" ->
+        handle_unschedule(sender_uuid, "unschedule")
 
       "suggest " <> _ ->
         handle_suggest(sender_uuid, sender_name, stripped)
@@ -64,7 +73,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         :ok
 
       cmd when cmd in ["start vote", "start poll", "close vote", "close poll",
-                       "results", "unschedule"] ->
+                       "results"] ->
         redirect_to_group(signal, sender_uuid)
         :ok
 
@@ -73,10 +82,6 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         :ok
 
       "start poll " <> _ ->
-        redirect_to_group(signal, sender_uuid)
-        :ok
-
-      "unschedule " <> _ ->
         redirect_to_group(signal, sender_uuid)
         :ok
 
@@ -145,6 +150,107 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       YonderbookClubs.Signal.impl().send_message(sender_uuid, Formatter.format_suggestions_list(suggestions))
       :ok
     end)
+  end
+
+  @schedule_with_author_regex ~r/^(.+)\s+by\s+(.+)\s+for\s+(.+)$/i
+  @schedule_without_author_regex ~r/^(.+)\s+for\s+(.+)$/i
+
+  defp handle_schedule(sender_uuid, text) do
+    schedule_text = String.slice(text, 9..-1//1) |> String.trim()
+
+    with_club(sender_uuid, nil, {:dm_schedule, schedule_text}, fn club ->
+      handle_schedule_for_club(sender_uuid, club, schedule_text)
+    end)
+  end
+
+  defp handle_schedule_for_club(sender_uuid, club, schedule_text) do
+    signal = YonderbookClubs.Signal.impl()
+
+    cond do
+      Regex.match?(@schedule_with_author_regex, schedule_text) ->
+        [_, title, author, time_label] = Regex.run(@schedule_with_author_regex, schedule_text)
+        save_reading(sender_uuid, club, String.trim(title), String.trim(author), String.trim(time_label))
+
+      Regex.match?(@schedule_without_author_regex, schedule_text) ->
+        [_, title, time_label] = Regex.run(@schedule_without_author_regex, schedule_text)
+        save_reading(sender_uuid, club, String.trim(title), nil, String.trim(time_label))
+
+      true ->
+        {title, author} = extract_title_author(schedule_text)
+        PendingCommands.store(sender_uuid, {:dm_schedule_time, club.id, title, author})
+        signal.send_message(sender_uuid, "For when? Reply with the time (e.g., January, March\u2013April)!")
+        :ok
+    end
+  end
+
+  defp handle_unschedule(sender_uuid, text) do
+    unschedule_text =
+      case text do
+        "unschedule" -> ""
+        _ -> String.slice(text, 11..-1//1) |> String.trim()
+      end
+
+    with_club(sender_uuid, nil, {:dm_unschedule, unschedule_text}, fn club ->
+      signal = YonderbookClubs.Signal.impl()
+
+      if unschedule_text == "" do
+        PendingCommands.store(sender_uuid, {:dm_unschedule_title, club.id})
+        signal.send_message(sender_uuid, "Which book? Reply with the title.")
+        :ok
+      else
+        case Readings.remove_reading(club, unschedule_text) do
+          {:ok, reading} ->
+            signal.send_message(sender_uuid, "Got it! Removed #{reading.title} from the schedule.")
+            :ok
+
+          {:error, :not_found} ->
+            signal.send_message(sender_uuid, "Hmm, I couldn't find \"#{unschedule_text}\" on the schedule. Check the title and try again!")
+            :ok
+        end
+      end
+    end)
+  end
+
+  defp handle_unschedule_by_title(sender_uuid, club, title) do
+    signal = YonderbookClubs.Signal.impl()
+
+    case Readings.remove_reading(club, title) do
+      {:ok, reading} ->
+        signal.send_message(sender_uuid, "Got it! Removed #{reading.title} from the schedule.")
+        :ok
+
+      {:error, :not_found} ->
+        signal.send_message(sender_uuid, "Hmm, I couldn't find \"#{title}\" on the schedule. Check the title and try again!")
+        :ok
+    end
+  end
+
+  defp save_reading(sender_uuid, club, title, author, time_label) do
+    signal = YonderbookClubs.Signal.impl()
+
+    case Readings.create_reading(club, %{title: title, author: author, time_label: time_label}) do
+      {:ok, reading} ->
+        signal.send_message(sender_uuid, Formatter.format_schedule_confirmation(reading))
+        :ok
+
+      {:error, :limit_reached} ->
+        signal.send_message(sender_uuid, "The schedule is full (50 max)! Remove one first with /unschedule to make room.")
+        :ok
+
+      {:error, changeset} ->
+        Sentry.capture_message("Reading save failed",
+          extra: %{sender_uuid: sender_uuid, title: title, changeset: inspect(changeset)}
+        )
+        signal.send_message(sender_uuid, "Oops, something went wrong! Give it another try in a minute.")
+        :ok
+    end
+  end
+
+  defp extract_title_author(text) do
+    case Regex.run(@title_by_author_regex, text) do
+      [_, title, author] -> {String.trim(title), String.trim(author)}
+      nil -> {String.trim(text), nil}
+    end
   end
 
   defp handle_show_schedule(sender_uuid) do
@@ -508,6 +614,14 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       {:ok, {:book_pick, sender_name, club_id, alternatives, original_query}} ->
         handle_book_pick(sender_uuid, sender_name, club_id, alternatives, original_query, text)
 
+      {:ok, {:dm_schedule_time, club_id, title, author}} ->
+        club = Clubs.get_club!(club_id)
+        save_reading(sender_uuid, club, title, author, String.trim(text))
+
+      {:ok, {:dm_unschedule_title, club_id}} ->
+        club = Clubs.get_club!(club_id)
+        handle_unschedule_by_title(sender_uuid, club, String.trim(text))
+
       {:ok, pending_cmd} ->
         # All other pending commands expect a club number
         case parse_club_number(String.trim(text)) do
@@ -602,6 +716,22 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
   defp dispatch_pending(sender_uuid, :suggestions, n), do: handle_suggestions(sender_uuid, n)
   defp dispatch_pending(sender_uuid, :schedule, n), do: handle_show_schedule_with_club(sender_uuid, n)
   defp dispatch_pending(sender_uuid, {:suggest, name, text}, n), do: handle_suggest_with_club(sender_uuid, name, text, n)
+  defp dispatch_pending(sender_uuid, {:dm_schedule, text}, n) do
+    with_club(sender_uuid, n, {:dm_schedule, text}, fn club ->
+      handle_schedule_for_club(sender_uuid, club, text)
+    end)
+  end
+  defp dispatch_pending(sender_uuid, {:dm_unschedule, text}, n) do
+    with_club(sender_uuid, n, {:dm_unschedule, text}, fn club ->
+      if text == "" do
+        PendingCommands.store(sender_uuid, {:dm_unschedule_title, club.id})
+        YonderbookClubs.Signal.impl().send_message(sender_uuid, "Which book? Reply with the title.")
+        :ok
+      else
+        handle_unschedule_by_title(sender_uuid, club, text)
+      end
+    end)
+  end
 
   defp handle_suggest_with_club(sender_uuid, sender_name, suggestion_text, club_number) do
     with_club(sender_uuid, club_number, {:suggest, sender_name, suggestion_text}, fn club ->

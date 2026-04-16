@@ -1012,8 +1012,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
   describe "wrong context commands" do
     test "group command in DM redirects to group chat" do
       for cmd <- ["/start vote", "/start vote 2", "/start poll", "/start poll 3",
-                  "/close vote", "/close poll", "/results",
-                  "/unschedule", "/unschedule Piranesi"] do
+                  "/close vote", "/close poll", "/results"] do
         expect(YonderbookClubs.Signal.Mock, :send_message, fn _uuid, msg ->
           assert msg =~ "group chat"
           :ok
@@ -2073,9 +2072,12 @@ defmodule YonderbookClubs.Bot.RouterTest do
       assert :ok = Router.handle_message(dm_message("close vote"))
     end
 
-    test "unschedule in DM redirects to group" do
+    test "unschedule in DM prompts for title" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "group chat command" or body =~ "DMs"
+        assert body =~ "Which book?"
         :ok
       end)
 
