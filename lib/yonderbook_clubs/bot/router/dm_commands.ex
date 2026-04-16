@@ -287,13 +287,13 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
     Regex.match?(~r/^(\d{10}|\d{9}X|\d{13})$/i, stripped)
   end
 
-  defp handle_ai_suggestion(sender_uuid, sender_name, club, text, rejected_titles \\ []) do
+  defp handle_ai_suggestion(sender_uuid, sender_name, club, text, rejected_titles \\ [], opts \\ []) do
     signal = YonderbookClubs.Signal.impl()
 
-    if rejected_titles == [] do
-      signal.send_message(sender_uuid, "Looking that up for you...")
-    else
+    if Keyword.get(opts, :retry, false) do
       signal.send_message(sender_uuid, "Let me try again...")
+    else
+      signal.send_message(sender_uuid, "Looking that up for you...")
     end
 
     case YonderbookClubs.Books.search_ai(text, rejected_titles) do
@@ -549,7 +549,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         case alternatives do
           [] when is_list(rejected) and length(rejected) < @max_ai_retries ->
             club = Clubs.get_club!(club_id)
-            handle_ai_suggestion(sender_uuid, sender_name, club, original_query, rejected)
+            handle_ai_suggestion(sender_uuid, sender_name, club, original_query, rejected, retry: true)
 
           [] when is_list(rejected) ->
             PendingCommands.store(sender_uuid, {:suggest_text, sender_name})
