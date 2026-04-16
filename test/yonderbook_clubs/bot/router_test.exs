@@ -637,7 +637,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
         assert body =~ "on the schedule"
         assert body =~ "Piranesi by Susanna Clarke"
-        assert body =~ "January"
+        assert body =~ "Jan"
         :ok
       end)
 
@@ -653,7 +653,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
         assert body =~ "on the schedule"
         assert body =~ "Piranesi"
-        assert body =~ "January"
+        assert body =~ "Jan"
         :ok
       end)
 
@@ -674,7 +674,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
         assert body =~ "Reading schedule"
-        assert body =~ "January — Piranesi by Susanna Clarke"
+        assert body =~ "Jan — Piranesi by Susanna Clarke"
         :ok
       end)
 
@@ -758,7 +758,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
         assert body =~ "Waiting for Godot"
-        assert body =~ "January"
+        assert body =~ "Jan"
         :ok
       end)
 
@@ -907,7 +907,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
         assert body =~ "Reading schedule"
-        assert body =~ "January — Piranesi by Susanna Clarke"
+        assert body =~ "Jan — Piranesi by Susanna Clarke"
         :ok
       end)
 
@@ -1426,7 +1426,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
         assert body =~ "on the schedule"
         assert body =~ "Piranesi"
-        assert body =~ "January"
+        assert body =~ "Jan"
         :ok
       end)
 
@@ -1450,7 +1450,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "group.abc123", body ->
         assert body =~ "on the schedule"
         assert body =~ "Piranesi by Susanna Clarke"
-        assert body =~ "March"
+        assert body =~ "Mar"
         :ok
       end)
 

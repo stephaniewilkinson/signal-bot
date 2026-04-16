@@ -301,8 +301,8 @@ defmodule YonderbookClubs.Bot.FormatterTest do
 
       result = Formatter.format_schedule(readings)
       assert result =~ "Reading schedule:"
-      assert result =~ "January — Piranesi by Susanna Clarke"
-      assert result =~ "March — Babel by RF Kuang"
+      assert result =~ "Jan — Piranesi by Susanna Clarke"
+      assert result =~ "Mar — Babel by RF Kuang"
     end
 
     test "handles readings without author" do
@@ -355,8 +355,8 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       result = Formatter.format_schedule(readings)
       lines = result |> String.split("\n") |> Enum.reject(&(&1 == ""))
 
-      assert Enum.at(lines, 1) =~ "January — Piranesi"
-      assert Enum.at(lines, 2) =~ "March — Babel"
+      assert Enum.at(lines, 1) =~ "Jan — Piranesi"
+      assert Enum.at(lines, 2) =~ "Mar — Babel"
       assert Enum.at(lines, 3) =~ "TBD — The Dispossessed"
     end
   end
@@ -372,7 +372,7 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       result = Formatter.format_schedule_confirmation(reading)
       assert result =~ "on the schedule"
       assert result =~ "Piranesi by Susanna Clarke"
-      assert result =~ "January"
+      assert result =~ "Jan"
     end
 
     test "formats confirmation without author" do

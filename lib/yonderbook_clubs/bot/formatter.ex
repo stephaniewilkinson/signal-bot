@@ -208,7 +208,7 @@ defmodule YonderbookClubs.Bot.Formatter do
   def format_schedule(readings) do
     lines =
       Enum.map_join(readings, "\n", fn reading ->
-        "#{reading.time_label} — #{format_title_author(reading)}"
+        "#{abbreviate_months(reading.time_label)} — #{format_title_author(reading)}"
       end)
 
     "Reading schedule:\n\n" <> lines
@@ -216,7 +216,22 @@ defmodule YonderbookClubs.Bot.Formatter do
 
   @spec format_schedule_confirmation(Reading.t()) :: String.t()
   def format_schedule_confirmation(reading) do
-    "Nice! #{format_title_author(reading)} is on the schedule for #{reading.time_label}."
+    "Nice! #{format_title_author(reading)} is on the schedule for #{abbreviate_months(reading.time_label)}."
+  end
+
+  @month_abbreviations [
+    {"january", "Jan"}, {"february", "Feb"}, {"march", "Mar"},
+    {"april", "Apr"}, {"may", "May"}, {"june", "Jun"},
+    {"july", "Jul"}, {"august", "Aug"}, {"september", "Sep"},
+    {"october", "Oct"}, {"november", "Nov"}, {"december", "Dec"}
+  ]
+
+  defp abbreviate_months(nil), do: ""
+
+  defp abbreviate_months(label) do
+    Enum.reduce(@month_abbreviations, label, fn {full, abbr}, acc ->
+      String.replace(acc, ~r/#{full}/i, abbr)
+    end)
   end
 
   @spec format_welcome() :: String.t()
