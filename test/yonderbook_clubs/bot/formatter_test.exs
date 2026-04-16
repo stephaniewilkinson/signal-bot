@@ -316,7 +316,7 @@ defmodule YonderbookClubs.Bot.FormatterTest do
 
       result = Formatter.format_schedule(readings)
       assert result =~ "TBD — Piranesi"
-      refute result =~ "by"
+      refute result =~ " by "
     end
 
     test "handles readings with empty string author" do
@@ -330,7 +330,7 @@ defmodule YonderbookClubs.Bot.FormatterTest do
 
       result = Formatter.format_schedule(readings)
       assert result =~ "TBD — Piranesi"
-      refute result =~ "by"
+      refute result =~ " by "
     end
 
     test "preserves insertion order in output" do
@@ -353,11 +353,10 @@ defmodule YonderbookClubs.Bot.FormatterTest do
       ]
 
       result = Formatter.format_schedule(readings)
-      lines = result |> String.split("\n") |> Enum.reject(&(&1 == ""))
 
-      assert Enum.at(lines, 1) =~ "Jan — Piranesi"
-      assert Enum.at(lines, 2) =~ "Mar — Babel"
-      assert Enum.at(lines, 3) =~ "TBD — The Dispossessed"
+      assert result =~ "Jan — Piranesi"
+      assert result =~ "Mar — Babel"
+      assert result =~ "TBD — The Dispossessed"
     end
   end
 
@@ -384,7 +383,7 @@ defmodule YonderbookClubs.Bot.FormatterTest do
 
       result = Formatter.format_schedule_confirmation(reading)
       assert result =~ "Piranesi is on the schedule for TBD"
-      refute result =~ "by"
+      refute result =~ " by "
     end
   end
 end

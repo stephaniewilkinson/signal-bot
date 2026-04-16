@@ -207,11 +207,18 @@ defmodule YonderbookClubs.Bot.Formatter do
 
   def format_schedule(readings) do
     lines =
-      Enum.map_join(readings, "\n", fn reading ->
-        "#{abbreviate_months(reading.time_label)} — #{format_title_author(reading)}"
+      Enum.map_join(readings, "\n\n", fn reading ->
+        "#{abbreviate_months(reading.time_label)} — #{format_title_author(reading)}\n#{libby_url(reading.title)}"
       end)
 
     "Reading schedule:\n\n" <> lines
+  end
+
+  defp libby_url(nil), do: ""
+
+  defp libby_url(title) do
+    query = title |> String.downcase() |> String.replace(~r/[^a-z0-9 ]+/, "") |> String.replace(" ", "-")
+    "https://libbyapp.com/search/all/search/query-#{query}/page-1"
   end
 
   @spec format_schedule_confirmation(Reading.t()) :: String.t()
