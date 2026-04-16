@@ -250,7 +250,11 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         signal.send_message(sender_uuid, Formatter.format_book_confirm(book_data))
         :ok
 
-      {:error, {tag, _}} when tag in [:ai_transport_error, :ai_http_error] ->
+      {:error, {tag, detail} = reason} when tag in [:ai_transport_error, :ai_http_error] ->
+        Sentry.capture_message("AI book search failed",
+          extra: %{sender_uuid: sender_uuid, query: text, reason: inspect(reason)},
+          tags: %{ai_error_type: to_string(tag), ai_error_detail: inspect(detail)}
+        )
         signal.send_message(
           sender_uuid,
           "Something went wrong reaching the AI service. Give it another try in a minute!"
@@ -258,8 +262,16 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         :ok
 
       {:error, reason} ->
+        {error_type, error_detail} =
+          case reason do
+            {:ai_http_error, status} -> {"ai_http_error", to_string(status)}
+            {:ai_transport_error, detail} -> {"ai_transport_error", inspect(detail)}
+            other -> {"other", inspect(other)}
+          end
+
         Sentry.capture_message("AI book search failed",
-          extra: %{sender_uuid: sender_uuid, query: text, reason: inspect(reason)}
+          extra: %{sender_uuid: sender_uuid, query: text, reason: inspect(reason)},
+          tags: %{ai_error_type: error_type, ai_error_detail: error_detail}
         )
         signal.send_message(
           sender_uuid,

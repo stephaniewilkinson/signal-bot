@@ -189,7 +189,7 @@ defmodule YonderbookClubs.Books do
             result
 
           {:error, {tag, _}} = anthropic_error when tag in [:ai_transport_error, :ai_http_error] ->
-            Logger.warning("Anthropic unavailable (#{tag}), trying Gemini fallback")
+            Logger.error("Anthropic unavailable (#{tag}), trying Gemini fallback")
 
             case try_gemini_fallback(text) do
               {:ok, _} = result -> result
@@ -378,7 +378,7 @@ defmodule YonderbookClubs.Books do
   defp do_ai_extraction(text, api_key) do
     body =
       Jason.encode!(%{
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 200,
         system: @ai_system_prompt,
         messages: [
@@ -406,15 +406,15 @@ defmodule YonderbookClubs.Books do
         parse_ai_response(response_text)
 
       {:ok, %{status: status, body: body}} ->
-        Logger.warning("AI extraction failed: HTTP #{status} — #{inspect(body)}")
+        Logger.error("AI extraction failed: HTTP #{status} — #{inspect(body)}")
         {:error, {:ai_http_error, status}}
 
       {:error, %{reason: reason}} ->
-        Logger.warning("AI extraction failed: #{inspect(reason)}")
+        Logger.error("AI extraction failed: #{inspect(reason)}")
         {:error, {:ai_transport_error, reason}}
 
       other ->
-        Logger.warning("AI extraction failed: #{inspect(other)}")
+        Logger.error("AI extraction failed: #{inspect(other)}")
         {:error, :ai_unknown_error}
     end
   end
