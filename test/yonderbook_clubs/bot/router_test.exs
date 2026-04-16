@@ -1976,6 +1976,32 @@ defmodule YonderbookClubs.Bot.RouterTest do
     end
   end
 
+    @tag :external
+    test "freetext 'the moor witch' finds Moorwitch and does not re-suggest after rejection" do
+      _club = create_club()
+      mock_list_groups_with_club()
+
+      # Step 1: freetext search finds Moorwitch via collapsed query fallback
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Moorwitch"
+        assert body =~ "Jessica Khoury"
+        assert body =~ "is that right?"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("suggest the moor witch"))
+
+      # Step 2: user rejects — should ask for more specific input, not offer AI
+      # (AI would find the same book since it's the only match for this query)
+      expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
+        assert body =~ "Want to try again?"
+        refute body =~ "AI"
+        :ok
+      end)
+
+      assert :ok = Router.handle_message(dm_message("no"))
+    end
+
   # --- Suggest ai: Prefix ---
 
   describe "DM messages - suggest ai: prefix" do
