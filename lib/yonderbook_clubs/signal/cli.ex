@@ -323,7 +323,13 @@ defmodule YonderbookClubs.Signal.CLI do
             level: :info
           })
 
-          YonderbookClubs.Bot.Router.handle_poll_vote(vote_msg)
+          try do
+            YonderbookClubs.Bot.Router.handle_poll_vote(vote_msg)
+          rescue
+            e ->
+              Logger.error("Poll vote handler crashed: #{Exception.message(e)}")
+              Sentry.capture_exception(e, stacktrace: __STACKTRACE__, extra: %{vote: vote_msg})
+          end
         end)
 
       %{"dataMessage" => %{"message" => message}} when is_binary(message) ->
@@ -344,13 +350,29 @@ defmodule YonderbookClubs.Signal.CLI do
             data: %{has_group: Map.has_key?(msg, "groupInfo")}
           })
 
-          YonderbookClubs.Bot.Router.handle_message(msg)
+          try do
+            YonderbookClubs.Bot.Router.handle_message(msg)
+          rescue
+            e ->
+              Logger.error("Message handler crashed: #{Exception.message(e)}")
+              Sentry.capture_exception(e, stacktrace: __STACKTRACE__, extra: %{message: msg})
+
+              # Send error reply so the user isn't left in silence
+              reply_to = msg["groupInfo"]["groupId"] || msg["sourceUuid"]
+              if reply_to, do: safe_error_reply(reply_to)
+          end
         end)
 
       %{"sourceNumber" => source_number, "dataMessage" => %{"groupInfo" => %{"groupId" => group_id, "type" => type}}}
       when type in ["QUIT", "KICKED"] ->
         Task.Supervisor.start_child(YonderbookClubs.TaskSupervisor, fn ->
-          YonderbookClubs.Bot.Router.handle_group_quit(group_id, source_number)
+          try do
+            YonderbookClubs.Bot.Router.handle_group_quit(group_id, source_number)
+          rescue
+            e ->
+              Logger.error("Group quit handler crashed: #{Exception.message(e)}")
+              Sentry.capture_exception(e, stacktrace: __STACKTRACE__, extra: %{group_id: group_id})
+          end
         end)
 
       _ ->
@@ -360,6 +382,17 @@ defmodule YonderbookClubs.Signal.CLI do
   end
 
   defp dispatch_notification(_notification), do: :ok
+
+  defp safe_error_reply(recipient) do
+    try do
+      YonderbookClubs.Signal.impl().send_message(
+        recipient,
+        "Oops, something went wrong! Give it another try in a minute."
+      )
+    rescue
+      _ -> :ok
+    end
+  end
 
   defp maybe_add_group_info(msg, %{"dataMessage" => %{"groupInfo" => group_info}}) do
     Map.put(msg, "groupInfo", group_info)
