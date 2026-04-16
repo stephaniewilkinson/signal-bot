@@ -219,21 +219,11 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
   defp handle_freetext_suggestion(sender_uuid, sender_name, club, text) do
     signal = YonderbookClubs.Signal.impl()
 
-    case YonderbookClubs.Books.search_general_multi(text) do
+    case search_freetext_with_fallback(text) do
       {:ok, book_data, alternatives} ->
-        if title_relevant?(text, book_data.title) do
-          PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, alternatives, text})
-          signal.send_message(sender_uuid, Formatter.format_book_confirm(book_data))
-          :ok
-        else
-          # Open Library results don't match the query — offer AI with opt-in
-          PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club.id, text})
-          signal.send_message(
-            sender_uuid,
-            "I couldn't find a good match for that. Want me to use AI to look it up? Reply yes or no."
-          )
-          :ok
-        end
+        PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, alternatives, text})
+        signal.send_message(sender_uuid, Formatter.format_book_confirm(book_data))
+        :ok
 
       {:error, _reason} ->
         PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club.id, text})
@@ -242,6 +232,27 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
           "I couldn't find that one. Want me to use AI to look it up? Reply yes or no."
         )
         :ok
+    end
+  end
+
+  defp search_freetext_with_fallback(text) do
+    case search_and_check_relevance(text) do
+      {:ok, _, _} = result ->
+        result
+
+      {:error, _} ->
+        collapsed = YonderbookClubs.Books.collapse_title(text)
+        if collapsed != text, do: search_and_check_relevance(collapsed), else: {:error, :not_found}
+    end
+  end
+
+  defp search_and_check_relevance(query) do
+    case YonderbookClubs.Books.search_general_multi(query) do
+      {:ok, book_data, _alternatives} = result ->
+        if title_relevant?(query, book_data.title), do: result, else: {:error, :not_relevant}
+
+      error ->
+        error
     end
   end
 

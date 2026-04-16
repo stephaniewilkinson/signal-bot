@@ -116,6 +116,17 @@ defmodule YonderbookClubs.Books do
   end
 
   defp do_general_search_multi(query) do
+    case do_general_search_multi_raw(query) do
+      {:ok, _, _} = result ->
+        result
+
+      {:error, :not_found} ->
+        collapsed = collapse_title(query)
+        if collapsed != query, do: do_general_search_multi_raw(collapsed), else: {:error, :not_found}
+    end
+  end
+
+  defp do_general_search_multi_raw(query) do
     url = "#{@open_library_base}/search.json"
 
     case Req.get(url, params: [q: query, limit: 10], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
@@ -166,6 +177,17 @@ defmodule YonderbookClubs.Books do
   end
 
   defp do_general_search(query) do
+    case do_general_search_raw(query) do
+      {:ok, _} = result ->
+        result
+
+      {:error, :not_found} ->
+        collapsed = collapse_title(query)
+        if collapsed != query, do: do_general_search_raw(collapsed), else: {:error, :not_found}
+    end
+  end
+
+  defp do_general_search_raw(query) do
     url = "#{@open_library_base}/search.json"
 
     case Req.get(url, params: [q: query, limit: 5], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
@@ -598,10 +620,8 @@ defmodule YonderbookClubs.Books do
   defp cover_url(nil), do: nil
   defp cover_url(cover_id), do: "#{@covers_base}/#{cover_id}-M.jpg"
 
-  # Collapse a multi-word title into a compound word for Open Library search.
-  # Strips leading articles ("The", "A", "An") and removes spaces.
-  # e.g. "The Moor Witch" → "MoorWitch"
-  defp collapse_title(title) do
+  @doc false
+  def collapse_title(title) do
     title
     |> String.replace(~r/^(the|a|an)\s+/i, "")
     |> String.replace(" ", "")
