@@ -507,7 +507,15 @@ defmodule YonderbookClubs.Books do
 
     case Req.post(@anthropic_base, req_options) do
       {:ok, %{status: 200, body: %{"content" => [%{"text" => response_text} | _]}}} ->
-        parse_ai_response(response_text)
+        case parse_ai_response(response_text) do
+          {:ok, book_data} ->
+            if title_rejected?(book_data.title, rejected_titles),
+              do: {:error, :not_found},
+              else: {:ok, book_data}
+
+          error ->
+            error
+        end
 
       {:ok, %{status: status, body: body}} ->
         Logger.error("AI extraction failed: HTTP #{status} — #{inspect(body)}")
@@ -651,6 +659,13 @@ defmodule YonderbookClubs.Books do
 
   defp cover_url(nil), do: nil
   defp cover_url(cover_id), do: "#{@covers_base}/#{cover_id}-M.jpg"
+
+  defp title_rejected?(_title, []), do: false
+
+  defp title_rejected?(title, rejected_titles) do
+    normalized = normalize_for_dedup(title)
+    Enum.any?(rejected_titles, fn rejected -> normalize_for_dedup(rejected) == normalized end)
+  end
 
   defp first_success(funs) do
     Enum.reduce_while(funs, {:error, :not_found}, fn fun, _acc ->
