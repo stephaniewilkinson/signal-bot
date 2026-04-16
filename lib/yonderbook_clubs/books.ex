@@ -474,10 +474,22 @@ defmodule YonderbookClubs.Books do
   defp do_ai_extraction(text, api_key, rejected_titles) do
     user_content =
       case rejected_titles do
-        [] -> text
+        [] ->
+          text
+
         titles ->
-          rejected_list = Enum.join(titles, ", ")
-          "#{text}\n\nDo NOT suggest these books (already rejected by the user): #{rejected_list}. Find a DIFFERENT book."
+          rejected_list = Enum.map(titles, &"- #{&1}") |> Enum.join("\n")
+
+          """
+          #{text}
+
+          The user already rejected these suggestions:
+          #{rejected_list}
+
+          They are looking for a DIFFERENT book. Think broadly — they may be \
+          describing a book's setting, characters, or themes rather than its exact title. \
+          Suggest a completely different book, not a variant of the same title.\
+          """
       end
 
     body =
