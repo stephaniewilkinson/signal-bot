@@ -221,7 +221,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
     case YonderbookClubs.Books.search_general_multi(text) do
       {:ok, book_data, alternatives} ->
-        PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, alternatives})
+        PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, alternatives, text})
         signal.send_message(sender_uuid, Formatter.format_book_confirm(book_data))
         :ok
 
@@ -246,7 +246,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
     case YonderbookClubs.Books.search_ai(text) do
       {:ok, book_data} ->
-        PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, []})
+        PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, [], text})
         signal.send_message(sender_uuid, Formatter.format_book_confirm(book_data))
         :ok
 
@@ -302,7 +302,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
     case YonderbookClubs.Books.search_multi(title, author) do
       {:ok, book_data, alternatives} ->
-        PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, alternatives})
+        PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, alternatives, "#{title} by #{author}"})
         signal.send_message(sender_uuid, Formatter.format_book_confirm(book_data))
         :ok
 
@@ -442,11 +442,11 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       {:ok, {:ai_confirm, sender_name, club_id, original_text}} ->
         handle_ai_confirm(sender_uuid, sender_name, club_id, original_text, text)
 
-      {:ok, {:book_confirm, sender_name, club_id, book_data, alternatives}} ->
-        handle_book_confirm(sender_uuid, sender_name, club_id, book_data, alternatives, text)
+      {:ok, {:book_confirm, sender_name, club_id, book_data, alternatives, original_query}} ->
+        handle_book_confirm(sender_uuid, sender_name, club_id, book_data, alternatives, original_query, text)
 
-      {:ok, {:book_pick, sender_name, club_id, alternatives}} ->
-        handle_book_pick(sender_uuid, sender_name, club_id, alternatives, text)
+      {:ok, {:book_pick, sender_name, club_id, alternatives, original_query}} ->
+        handle_book_pick(sender_uuid, sender_name, club_id, alternatives, original_query, text)
 
       {:ok, pending_cmd} ->
         # All other pending commands expect a club number
@@ -475,7 +475,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
     end
   end
 
-  defp handle_book_confirm(sender_uuid, sender_name, club_id, book_data, alternatives, reply) do
+  defp handle_book_confirm(sender_uuid, sender_name, club_id, book_data, alternatives, original_query, reply) do
     signal = YonderbookClubs.Signal.impl()
 
     case String.downcase(String.trim(reply)) do
@@ -486,11 +486,12 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
       no when no in ["no", "n"] ->
         case alternatives do
           [] ->
-            signal.send_message(sender_uuid, Formatter.format_no_alternatives())
+            PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club_id, original_query})
+            signal.send_message(sender_uuid, "No other matches found. Want me to use AI to look it up? Reply yes or no.")
             :ok
 
           alts ->
-            PendingCommands.store(sender_uuid, {:book_pick, sender_name, club_id, alts})
+            PendingCommands.store(sender_uuid, {:book_pick, sender_name, club_id, alts, original_query})
             signal.send_message(sender_uuid, Formatter.format_book_alternatives(alts))
             :ok
         end
@@ -500,7 +501,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
     end
   end
 
-  defp handle_book_pick(sender_uuid, sender_name, club_id, alternatives, reply) do
+  defp handle_book_pick(sender_uuid, sender_name, club_id, alternatives, original_query, reply) do
     signal = YonderbookClubs.Signal.impl()
     trimmed = String.trim(reply)
 
@@ -519,7 +520,8 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         end
 
       _ ->
-        signal.send_message(sender_uuid, Formatter.format_no_alternatives())
+        PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club_id, original_query})
+        signal.send_message(sender_uuid, "None of those right? Want me to use AI to look it up? Reply yes or no.")
         :ok
     end
   end
