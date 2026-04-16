@@ -493,8 +493,11 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         # Bare /suggest was sent; treat this entire message as the suggestion
         handle_suggest(sender_uuid, sender_name, "suggest " <> String.trim(text))
 
+      {:ok, {:ai_confirm, sender_name, club_id, original_text, prior_rejected}} ->
+        handle_ai_confirm(sender_uuid, sender_name, club_id, original_text, text, prior_rejected)
+
       {:ok, {:ai_confirm, sender_name, club_id, original_text}} ->
-        handle_ai_confirm(sender_uuid, sender_name, club_id, original_text, text)
+        handle_ai_confirm(sender_uuid, sender_name, club_id, original_text, text, [])
 
       {:ok, {:book_confirm, sender_name, club_id, book_data, alternatives, original_query, rejected}} ->
         handle_book_confirm(sender_uuid, sender_name, club_id, book_data, alternatives, original_query, text, rejected)
@@ -514,11 +517,11 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
     end
   end
 
-  defp handle_ai_confirm(sender_uuid, sender_name, club_id, original_text, reply) do
+  defp handle_ai_confirm(sender_uuid, sender_name, club_id, original_text, reply, prior_rejected) do
     case String.downcase(String.trim(reply)) do
       yes when yes in ["yes", "y"] ->
         club = Clubs.get_club!(club_id)
-        handle_ai_suggestion(sender_uuid, sender_name, club, original_text)
+        handle_ai_suggestion(sender_uuid, sender_name, club, original_text, prior_rejected)
 
       no when no in ["no", "n"] ->
         YonderbookClubs.Signal.impl().send_message(
@@ -554,7 +557,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
             :ok
 
           [] ->
-            PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club_id, original_query})
+            PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club_id, original_query, [book_data.title]})
             signal.send_message(sender_uuid, "No other matches found. Want me to use AI to look it up? Reply yes or no.")
             :ok
 
@@ -588,7 +591,8 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         end
 
       _ ->
-        PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club_id, original_query})
+        rejected = Enum.map(alternatives, & &1.title) |> Enum.reject(&is_nil/1)
+        PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club_id, original_query, rejected})
         signal.send_message(sender_uuid, "None of those right? Want me to use AI to look it up? Reply yes or no.")
         :ok
     end
