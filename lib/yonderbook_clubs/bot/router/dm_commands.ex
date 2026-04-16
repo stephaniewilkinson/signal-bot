@@ -221,9 +221,14 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
     case YonderbookClubs.Books.search_general_multi(text) do
       {:ok, book_data, alternatives} ->
-        PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, alternatives, text})
-        signal.send_message(sender_uuid, Formatter.format_book_confirm(book_data))
-        :ok
+        if title_relevant?(text, book_data.title) do
+          PendingCommands.store(sender_uuid, {:book_confirm, sender_name, club.id, book_data, alternatives, text})
+          signal.send_message(sender_uuid, Formatter.format_book_confirm(book_data))
+          :ok
+        else
+          # Open Library results don't match the query — go straight to AI
+          handle_ai_suggestion(sender_uuid, sender_name, club, text)
+        end
 
       {:error, _reason} ->
         PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club.id, text})
@@ -233,6 +238,15 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
         )
         :ok
     end
+  end
+
+  defp title_relevant?(_query, nil), do: false
+  defp title_relevant?(query, title) do
+    stop_words = ~w(the a an of and in on by for to is it)
+    query_words = query |> String.downcase() |> String.split(~r/\s+/) |> MapSet.new() |> MapSet.difference(MapSet.new(stop_words))
+    title_words = title |> String.downcase() |> String.split(~r/\s+/) |> MapSet.new() |> MapSet.difference(MapSet.new(stop_words))
+    overlap = MapSet.intersection(query_words, title_words) |> MapSet.size()
+    overlap > 0
   end
 
   defp isbn?(text) do

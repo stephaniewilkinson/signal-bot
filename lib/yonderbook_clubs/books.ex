@@ -480,7 +480,10 @@ defmodule YonderbookClubs.Books do
         {:error, :unrecognized}
 
       {:ok, %{"title" => title, "author" => author}} ->
-        search(title, author)
+        case search(title, author) do
+          {:ok, _} = result -> result
+          {:error, _} -> search_general("#{title} #{author}")
+        end
 
       _other ->
         {:error, :unrecognized}
