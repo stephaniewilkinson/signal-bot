@@ -1871,9 +1871,9 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       assert :ok = Router.handle_message(dm_message("suggest Piranesi by Susanna Clarke"))
 
-      # Say no — no alternatives available, asks for more specific input
+      # Say no — no alternatives, offers AI with rejected title carried through
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "Want to try again?"
+        assert body =~ "use AI to look it up"
         :ok
       end)
 
@@ -1977,7 +1977,7 @@ defmodule YonderbookClubs.Bot.RouterTest do
   end
 
     @tag :external
-    test "freetext 'the moor witch' finds Moorwitch and does not re-suggest after rejection" do
+    test "freetext 'the moor witch' finds Moorwitch and offers AI after rejection" do
       _club = create_club()
       mock_list_groups_with_club()
 
@@ -1991,11 +1991,10 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       assert :ok = Router.handle_message(dm_message("suggest the moor witch"))
 
-      # Step 2: user rejects — should ask for more specific input, not offer AI
-      # (AI would find the same book since it's the only match for this query)
+      # Step 2: user rejects — offers AI (which might find a different book),
+      # with the rejected title carried through so the same book isn't re-suggested
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "Want to try again?"
-        refute body =~ "AI"
+        assert body =~ "use AI to look it up"
         :ok
       end)
 
