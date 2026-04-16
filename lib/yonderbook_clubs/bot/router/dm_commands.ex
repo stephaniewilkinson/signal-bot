@@ -248,11 +248,28 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
   defp search_and_check_relevance(query) do
     case YonderbookClubs.Books.search_general_multi(query) do
-      {:ok, book_data, _alternatives} = result ->
-        if title_relevant?(query, book_data.title), do: result, else: {:error, :not_relevant}
+      {:ok, book_data, alternatives} ->
+        if title_relevant?(query, book_data.title) do
+          {:ok, book_data, alternatives}
+        else
+          promote_relevant_alternative(query, alternatives)
+        end
 
       error ->
         error
+    end
+  end
+
+  defp promote_relevant_alternative(query, alternatives) do
+    case Enum.split_with(alternatives, fn alt -> title_relevant?(query, alt.title) end) do
+      {[match | rest_relevant], non_relevant} ->
+        case YonderbookClubs.Books.resolve_preview(match) do
+          {:ok, book_data} -> {:ok, book_data, rest_relevant ++ non_relevant}
+          {:error, _} -> {:error, :not_relevant}
+        end
+
+      {[], _} ->
+        {:error, :not_relevant}
     end
   end
 
@@ -357,6 +374,7 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
 
     attrs =
       book_data
+      |> YonderbookClubs.Books.enrich_with_description()
       |> Map.put(:signal_sender_uuid, sender_uuid)
       |> Map.put(:signal_sender_name, sender_name)
 

@@ -44,13 +44,30 @@ defmodule YonderbookClubs.Books do
         {:ok, %{status: 200, body: %{"docs" => docs}}} when docs != [] ->
           case first_english_doc(docs) do
             nil -> do_general_search("#{title} #{author}")
-            doc -> build_from_search_result(doc)
+            doc -> build_book_data(doc)
           end
 
         _ ->
           do_general_search("#{title} #{author}")
       end
     end)
+  end
+
+  # Structured title+author query only — no fallback to general search.
+  # Used by parse_ai_response to avoid cascading fallback chains.
+  defp search_structured(title, author) do
+    url = "#{@open_library_base}/search.json"
+
+    case Req.get(url, params: [title: title, author: author, limit: 5], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
+      {:ok, %{status: 200, body: %{"docs" => docs}}} when docs != [] ->
+        case first_english_doc(docs) do
+          nil -> {:error, :not_found}
+          doc -> build_book_data(doc)
+        end
+
+      _ ->
+        {:error, :not_found}
+    end
   end
 
   @doc """
@@ -79,7 +96,7 @@ defmodule YonderbookClubs.Books do
         {:ok, %{status: 200, body: %{"docs" => docs}}} when docs != [] ->
           case filter_english_docs(docs, 5) do
             [first | rest] ->
-              case build_from_search_result(first) do
+              case build_book_data(first) do
                 {:ok, book_data} ->
                   {:ok, book_data, dedup_alternatives(first, rest)}
 
@@ -116,24 +133,13 @@ defmodule YonderbookClubs.Books do
   end
 
   defp do_general_search_multi(query) do
-    case do_general_search_multi_raw(query) do
-      {:ok, _, _} = result ->
-        result
-
-      {:error, :not_found} ->
-        collapsed = collapse_title(query)
-        if collapsed != query, do: do_general_search_multi_raw(collapsed), else: {:error, :not_found}
-    end
-  end
-
-  defp do_general_search_multi_raw(query) do
     url = "#{@open_library_base}/search.json"
 
     case Req.get(url, params: [q: query, limit: 10], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
       {:ok, %{status: 200, body: %{"docs" => docs}}} when docs != [] ->
         case filter_english_docs(docs, 5) do
           [first | rest] ->
-            case build_from_search_result(first) do
+            case build_book_data(first) do
               {:ok, book_data} ->
                 {:ok, book_data, dedup_alternatives(first, rest)}
 
@@ -194,24 +200,13 @@ defmodule YonderbookClubs.Books do
   end
 
   defp do_general_search(query) do
-    case do_general_search_raw(query) do
-      {:ok, _} = result ->
-        result
-
-      {:error, :not_found} ->
-        collapsed = collapse_title(query)
-        if collapsed != query, do: do_general_search_raw(collapsed), else: {:error, :not_found}
-    end
-  end
-
-  defp do_general_search_raw(query) do
     url = "#{@open_library_base}/search.json"
 
     case Req.get(url, params: [q: query, limit: 5], receive_timeout: @http_timeout_ms, retry: :safe_transient) do
       {:ok, %{status: 200, body: %{"docs" => docs}}} when docs != [] ->
         case first_english_doc(docs) do
           nil -> {:error, :not_found}
-          doc -> build_from_search_result(doc)
+          doc -> build_book_data(doc)
         end
 
       _ ->
@@ -272,19 +267,32 @@ defmodule YonderbookClubs.Books do
             end
 
           {:error, reason} ->
-            Logger.warning("AI extraction failed (#{inspect(reason)}), falling back to general search")
-
-            case search_general(text) do
-              {:ok, _} = result -> result
-              {:error, _} -> {:error, reason}
-            end
+            Logger.warning("AI extraction failed: #{inspect(reason)}")
+            {:error, reason}
         end
     end
   end
 
   # --- Search result helpers ---
 
-  defp build_from_search_result(doc) do
+  @doc """
+  Fetches the description for a book_data map that was returned without one.
+  No-op if description is already present.
+  """
+  @spec enrich_with_description(book_data()) :: book_data()
+  def enrich_with_description(%{description: desc} = book_data) when is_binary(desc), do: book_data
+
+  def enrich_with_description(%{open_library_work_id: work_id} = book_data) when not is_nil(work_id) do
+    description = fetch_work_description("/works/#{work_id}")
+    %{book_data | description: description}
+  end
+
+  def enrich_with_description(book_data), do: book_data
+
+  # Light version — no description fetch. Used during search when the result
+  # may be rejected by relevance checks or the user. Description is fetched
+  # later via enrich_with_description/1 at save time.
+  defp build_book_data(doc) do
     work_key = doc["key"]
     work_id = extract_work_id(work_key)
 
@@ -293,8 +301,6 @@ defmodule YonderbookClubs.Books do
     else
       cover_i = doc["cover_i"]
       raw_isbn = doc["isbn"]
-
-      description = fetch_work_description(work_key)
 
       isbn =
         case raw_isbn do
@@ -309,8 +315,17 @@ defmodule YonderbookClubs.Books do
          isbn: isbn,
          open_library_work_id: work_id,
          cover_url: cover_url(cover_i),
-         description: description
+         description: nil
        }}
+    end
+  end
+
+  # Full version — fetches description. Used by resolve_preview (user already
+  # picked this book) and build_from_edition (ISBN lookup, direct save).
+  defp build_from_search_result(doc) do
+    case build_book_data(doc) do
+      {:ok, book_data} -> {:ok, enrich_with_description(book_data)}
+      error -> error
     end
   end
 
@@ -327,10 +342,12 @@ defmodule YonderbookClubs.Books do
       {:error, :not_found}
     else
       title = edition["title"]
-      description = fetch_work_description(work_key)
       cover_i = List.first(edition["covers"] || [])
 
-      author_name = fetch_author_from_edition(edition) || fetch_author_from_work(work_key)
+      # Fetch work JSON once for both description and author
+      work_body = fetch_work_body(work_key)
+      description = extract_description_from_work(work_body, work_key)
+      author_name = fetch_author_from_edition(edition) || extract_author_from_work(work_body)
 
       isbn =
         case edition["isbn_13"] do
@@ -358,20 +375,37 @@ defmodule YonderbookClubs.Books do
 
   # --- Work / author fetching ---
 
-  defp fetch_work_description(nil), do: nil
+  defp fetch_work_body(nil), do: nil
 
-  defp fetch_work_description(work_key) do
+  defp fetch_work_body(work_key) do
     url = "#{@open_library_base}#{work_key}.json"
 
     case Req.get(url, receive_timeout: @http_timeout_ms, retry: :safe_transient) do
-      {:ok, %{status: 200, body: %{"description" => desc}}} ->
-        case extract_description(desc) do
-          nil -> fetch_english_edition_description(work_key)
-          text -> text
-        end
+      {:ok, %{status: 200, body: body}} when is_map(body) -> body
+      _other -> nil
+    end
+  end
 
-      _other ->
-        nil
+  defp fetch_work_description(work_key) do
+    work_body = fetch_work_body(work_key)
+    extract_description_from_work(work_body, work_key)
+  end
+
+  defp extract_description_from_work(nil, _work_key), do: nil
+
+  defp extract_description_from_work(work_body, work_key) do
+    case extract_description(work_body["description"]) do
+      nil -> fetch_english_edition_description(work_key)
+      text -> text
+    end
+  end
+
+  defp extract_author_from_work(nil), do: nil
+
+  defp extract_author_from_work(work_body) do
+    case work_body do
+      %{"authors" => [%{"author" => %{"key" => key}} | _]} -> fetch_author_name(key)
+      _ -> nil
     end
   end
 
@@ -423,19 +457,6 @@ defmodule YonderbookClubs.Books do
     fetch_author_name(author_key)
   end
 
-  defp fetch_author_from_work(nil), do: nil
-
-  defp fetch_author_from_work(work_key) do
-    url = "#{@open_library_base}#{work_key}.json"
-
-    case Req.get(url, receive_timeout: @http_timeout_ms, retry: :safe_transient) do
-      {:ok, %{status: 200, body: %{"authors" => [%{"author" => %{"key" => key}} | _]}}} ->
-        fetch_author_name(key)
-
-      _other ->
-        nil
-    end
-  end
 
   defp fetch_author_name(nil), do: nil
 
@@ -563,24 +584,18 @@ defmodule YonderbookClubs.Books do
         {:error, :unrecognized}
 
       {:ok, %{"title" => title, "author" => author}} ->
-        case search(title, author) do
-          {:ok, _} = result ->
-            result
+        # Flat search chain — at most 3 distinct API calls, no cascading fallbacks.
+        collapsed = collapse_title(title)
 
-          {:error, _} ->
-            # Open Library can't fuzzy-match split words (e.g. "Moor Witch" vs "Moorwitch"),
-            # so try collapsing multi-word titles into a single compound word as a fallback.
-            collapsed = collapse_title(title)
+        queries =
+          [
+            fn -> search_structured(title, author) end,
+            if(collapsed != title, do: fn -> search_structured(collapsed, author) end),
+            fn -> do_general_search("#{collapsed} #{author}") end
+          ]
+          |> Enum.reject(&is_nil/1)
 
-            if collapsed != title do
-              case search(collapsed, author) do
-                {:ok, _} = result -> result
-                {:error, _} -> search_general("#{title} #{author}")
-              end
-            else
-              search_general("#{title} #{author}")
-            end
-        end
+        first_success(queries)
 
       _other ->
         {:error, :unrecognized}
@@ -636,6 +651,15 @@ defmodule YonderbookClubs.Books do
 
   defp cover_url(nil), do: nil
   defp cover_url(cover_id), do: "#{@covers_base}/#{cover_id}-M.jpg"
+
+  defp first_success(funs) do
+    Enum.reduce_while(funs, {:error, :not_found}, fn fun, _acc ->
+      case fun.() do
+        {:ok, _} = result -> {:halt, result}
+        {:error, _} -> {:cont, {:error, :not_found}}
+      end
+    end)
+  end
 
   @doc false
   def collapse_title(title) do
