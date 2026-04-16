@@ -135,7 +135,7 @@ defmodule YonderbookClubs.Books do
           [first | rest] ->
             case build_from_search_result(first) do
               {:ok, book_data} ->
-                {:ok, book_data, Enum.map(rest, &preview_from_doc/1)}
+                {:ok, book_data, dedup_alternatives(first, rest)}
 
               {:error, :not_found} ->
                 {:error, :not_found}
