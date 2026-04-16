@@ -226,8 +226,13 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
           signal.send_message(sender_uuid, Formatter.format_book_confirm(book_data))
           :ok
         else
-          # Open Library results don't match the query — go straight to AI
-          handle_ai_suggestion(sender_uuid, sender_name, club, text)
+          # Open Library results don't match the query — offer AI with opt-in
+          PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club.id, text})
+          signal.send_message(
+            sender_uuid,
+            "I couldn't find a good match for that. Want me to use AI to look it up? Reply yes or no."
+          )
+          :ok
         end
 
       {:error, _reason} ->
