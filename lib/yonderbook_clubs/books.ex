@@ -81,7 +81,7 @@ defmodule YonderbookClubs.Books do
             [first | rest] ->
               case build_from_search_result(first) do
                 {:ok, book_data} ->
-                  {:ok, book_data, Enum.map(rest, &preview_from_doc/1)}
+                  {:ok, book_data, dedup_alternatives(first, rest)}
 
                 {:error, :not_found} ->
                   do_general_search_multi("#{title} #{author}")
@@ -156,6 +156,23 @@ defmodule YonderbookClubs.Books do
       author: List.first(doc["author_name"] || []),
       doc: doc
     }
+  end
+
+  defp dedup_alternatives(first_doc, rest) do
+    primary = normalize_for_dedup(first_doc["title"])
+
+    rest
+    |> Enum.reject(fn doc -> normalize_for_dedup(doc["title"]) == primary end)
+    |> Enum.map(&preview_from_doc/1)
+  end
+
+  defp normalize_for_dedup(nil), do: nil
+
+  defp normalize_for_dedup(title) do
+    title
+    |> String.downcase()
+    |> String.replace(~r/^(the|a|an)\s+/, "")
+    |> String.trim()
   end
 
   # Open Library's `language=eng` filter excludes books with no language metadata,
