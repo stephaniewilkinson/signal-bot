@@ -1871,9 +1871,9 @@ defmodule YonderbookClubs.Bot.RouterTest do
 
       assert :ok = Router.handle_message(dm_message("suggest Piranesi by Susanna Clarke"))
 
-      # Say no — no alternatives available, offers AI lookup
+      # Say no — no alternatives available, asks for more specific input
       expect(YonderbookClubs.Signal.Mock, :send_message, fn "uuid-sender", body ->
-        assert body =~ "use AI to look it up"
+        assert body =~ "Want to try again?"
         :ok
       end)
 

@@ -557,8 +557,8 @@ defmodule YonderbookClubs.Bot.Router.DMCommands do
             :ok
 
           [] ->
-            PendingCommands.store(sender_uuid, {:ai_confirm, sender_name, club_id, original_query, [book_data.title]})
-            signal.send_message(sender_uuid, "No other matches found. Want me to use AI to look it up? Reply yes or no.")
+            PendingCommands.store(sender_uuid, {:suggest_text, sender_name})
+            signal.send_message(sender_uuid, "No worries! Want to try again? Send me the title and author, like: Piranesi by Susanna Clarke")
             :ok
 
           alts ->
