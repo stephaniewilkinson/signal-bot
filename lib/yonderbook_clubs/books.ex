@@ -259,7 +259,7 @@ defmodule YonderbookClubs.Books do
             result
 
           {:error, {tag, _}} = anthropic_error when tag in [:ai_transport_error, :ai_http_error] ->
-            Logger.error("Anthropic unavailable (#{tag}), trying Gemini fallback")
+            Logger.warning("Anthropic unavailable (#{tag}), trying Gemini fallback")
 
             case try_gemini_fallback(text) do
               {:ok, _} = result -> result
@@ -530,15 +530,15 @@ defmodule YonderbookClubs.Books do
         end
 
       {:ok, %{status: status, body: body}} ->
-        Logger.error("AI extraction failed: HTTP #{status} — #{inspect(body)}")
+        Logger.warning("AI extraction failed: HTTP #{status} — #{inspect(body)}")
         {:error, {:ai_http_error, status}}
 
       {:error, %{reason: reason}} ->
-        Logger.error("AI extraction failed: #{inspect(reason)}")
+        Logger.warning("AI extraction failed: #{inspect(reason)}")
         {:error, {:ai_transport_error, reason}}
 
       other ->
-        Logger.error("AI extraction failed: #{inspect(other)}")
+        Logger.warning("AI extraction failed: #{inspect(other)}")
         {:error, :ai_unknown_error}
     end
   end
